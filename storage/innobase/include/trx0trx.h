@@ -1258,6 +1258,8 @@ struct trx_t {
 	char*		detailed_error;	/*!< detailed error message for last
 					error, or empty. */
 	FlushObserver*	flush_observer;	/*!< flush observer */
+    
+    lint        sub_tree_size;
 
 #ifdef UNIV_DEBUG
 	bool		is_dd_trx;	/*!< True if the transaction is used for
