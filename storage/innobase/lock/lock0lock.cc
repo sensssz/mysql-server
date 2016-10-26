@@ -1606,8 +1606,8 @@ lock_rec_fix_sub_tree_size(
 	ut_ad(lock_mutex_own());
 	ut_ad(lock_get_type_low(in_lock) == LOCK_REC);
 
-	space = wait_lock->un_member.rec_lock.space;
-	page_no = wait_lock->un_member.rec_lock.page_no;
+	space = in_lock->un_member.rec_lock.space;
+	page_no = in_lock->un_member.rec_lock.page_no;
 
 	hash = lock_hash_get(in_lock->type_mode);
     
@@ -2732,65 +2732,6 @@ lock_rec_cancel(
 
 static
 void
-lock_grant_and_move_on_page(
-    hash_table_t *lock_hash,
-    ulint         space,
-    ulint         page_no)
-{
-    lock_t*		lock;
-    lock_t*		previous;
-    ulint       rec_fold = lock_rec_fold(space, page_no);
-    
-    previous = (lock_t *) hash_get_nth_cell(lock_hash,
-                                            hash_calc_hash(rec_fold, lock_hash))->node;
-    if (previous == NULL) {
-        return;
-    }
-    if (previous->un_member.rec_lock.space == space &&
-        previous->un_member.rec_lock.page_no == page_no) {
-        lock = previous;
-    }
-    else {
-        while (previous->hash &&
-               (previous->hash->un_member.rec_lock.space != space ||
-                previous->hash->un_member.rec_lock.page_no != page_no)) {
-                   previous = previous->hash;
-        }
-        lock = previous->hash;
-    }
-    
-    ut_ad(previous->hash == lock || previous == lock);
-    /* Grant locks if there are no conflicting locks ahead.
-     Move granted locks to the head of the list. */
-    for (;lock != NULL;) {
-        
-        /* If the lock is a wait lock on this page, and it does not need to wait. */
-        if ((lock->un_member.rec_lock.space == space)
-            && (lock->un_member.rec_lock.page_no == page_no)
-            && lock_get_wait(lock)
-            && !lock_rec_has_to_wait_in_queue(lock)) {
-            
-            lock_grant(lock, false);
-            
-            if (previous != NULL) {
-                /* Move the lock to the head of the list. */
-                HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
-                lock_rec_insert_to_head(lock, rec_fold);
-            } else {
-                /* Already at the head of the list. */
-                previous = lock;
-            }
-            /* Move on to the next lock. */
-            lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, previous));
-        } else {
-            previous = lock;
-            lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, lock));
-        }
-    }
-}
-
-static
-void
 lock_grant_and_move(
     hash_table_t*   lock_hash,
     hash_cell_t*    cell,
@@ -2849,66 +2790,71 @@ lock_rec_dequeue_from_page(
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
     MONITOR_DEC(MONITOR_NUM_RECLOCK);
     
-    hash_cell_t* cell = hash_get_nth_cell(lock_hash,
-                                          hash_calc_hash(rec_fold,
-                                                         lock_hash));
-    std::unordered_map<ulint, std::vector<lock_t *>> read_chunks;
-    std::unordered_map<ulint, lock_t *> write_locks;
-    std::set<ulint> heap_nos;
+    if (innodb_lock_schedule_algorithm
+        == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
+        && !thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
     
-    for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
-                                                page_no);
-         lock != NULL;
-         lock = lock_rec_get_next_on_page(lock)) {
-        if (!lock_get_wait(lock)) {
-            continue;
-        }
-        heap_no = lock_rec_find_set_bit(lock);
-        if (lock_rec_get_nth_bit(in_lock, heap_no) &&
-            lock_has_to_wait(lock, in_lock)) {
-            heap_nos.insert(heap_no);
-            if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S &&
-                read_chunks[heap_no].size() < CHUNK_SIZE) {
-                read_chunks[heap_no].push_back(lock);
-            } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X &&
-                       write_locks[heap_no] != NULL) {
-                write_locks[heap_no] = lock;
+        hash_cell_t* cell = hash_get_nth_cell(lock_hash,
+                                              hash_calc_hash(rec_fold,
+                                                             lock_hash));
+        std::unordered_map<ulint, std::vector<lock_t *>> read_chunks;
+        std::unordered_map<ulint, lock_t *> write_locks;
+        std::set<ulint> heap_nos;
+        
+        for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
+                                                    page_no);
+             lock != NULL;
+             lock = lock_rec_get_next_on_page(lock)) {
+            if (!lock_get_wait(lock)) {
+                continue;
+            }
+            heap_no = lock_rec_find_set_bit(lock);
+            if (lock_rec_get_nth_bit(in_lock, heap_no) &&
+                lock_has_to_wait(lock, in_lock)) {
+                heap_nos.insert(heap_no);
+                if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S &&
+                    read_chunks[heap_no].size() < CHUNK_SIZE) {
+                    read_chunks[heap_no].push_back(lock);
+                } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X &&
+                           write_locks[heap_no] != NULL) {
+                    write_locks[heap_no] = lock;
+                }
             }
         }
-    }
-    for (auto heap_no : heap_nos) {
-        lint read_sub_tree_size_total = 0;
-        lint write_sub_tree_size = 0;
-        auto &read_chunk = read_chunks[heap_no];
-        auto write_lock = write_locks[heap_no];
-        // 1 for read chunk, -1 for write lock
-        int select_result = 0;
-        for (auto lock : read_chunk) {
-            read_sub_tree_size_total += lock->trx->sub_tree_size;
-        }
-        if (write_lock != NULL) {
-            write_sub_tree_size = write_lock->sub_tree_size;
-        }
-        
-        if (read_chunk.size() > 0 &&
-            write_locks != NULL) {
-            double write_first_cost = read_sub_tree_size_total +
-                                      2 * write_sub_tree_size + CHUNK_SIZE;
-            double read_first_cost = read_sub_tree_size_total + write_sub_tree_size +
-                                     (read_sub_tree_size_total + 1) * finish_time(CHUNK_SIZE);
-            select_result = write_first_cost > read_first_cost? 1 : -1;
-        } else if (write_lock != NULL) {
-            select_result = 1;
-        } else {
-            select_result = -1;
-        }
-        
-        if (select_result == 1) {
+        for (auto heap_no : heap_nos) {
+            lint read_sub_tree_size_total = 0;
+            lint write_sub_tree_size = 0;
+            auto &read_chunk = read_chunks[heap_no];
+            auto write_lock = write_locks[heap_no];
+            // 1 for read chunk, -1 for write lock
+            int select_result = 0;
             for (auto lock : read_chunk) {
-                lock_grant_and_move(lock_hash, cell, lock, rec_fold);
+                read_sub_tree_size_total += lock->trx->sub_tree_size;
             }
-        } else {
-            lock_grant_and_move(lock_hash, cell, write_lock, rec_fold);
+            if (write_lock != NULL) {
+                write_sub_tree_size = write_lock->trx->sub_tree_size;
+            }
+            
+            if (read_chunk.size() > 0 &&
+                write_lock != NULL) {
+                double write_first_cost = read_sub_tree_size_total +
+                                          2 * write_sub_tree_size + CHUNK_SIZE;
+                double read_first_cost = read_sub_tree_size_total + write_sub_tree_size +
+                                         (read_sub_tree_size_total + 1) * finish_time(CHUNK_SIZE);
+                select_result = write_first_cost > read_first_cost? 1 : -1;
+            } else if (write_lock != NULL) {
+                select_result = 1;
+            } else {
+                select_result = -1;
+            }
+            
+            if (select_result == 1) {
+                for (auto lock : read_chunk) {
+                    lock_grant_and_move(lock_hash, cell, lock, rec_fold);
+                }
+            } else {
+                lock_grant_and_move(lock_hash, cell, write_lock, rec_fold);
+            }
         }
     }
     
@@ -4652,66 +4598,6 @@ run_again:
 }
 
 /*=========================== LOCK RELEASE ==============================*/
-static
-void
-lock_grant_and_move_on_rec(
-    hash_table_t *lock_hash,
-    lock_t       *first_lock,
-    ulint         heap_no)
-{
-    lock_t*		lock;
-    lock_t*		previous;
-    ulint		space;
-    ulint		page_no;
-    ulint       rec_fold;
-    
-    space = first_lock->un_member.rec_lock.space;
-    page_no = first_lock->un_member.rec_lock.page_no;
-    rec_fold = lock_rec_fold(space, page_no);
-    
-    previous = (lock_t *) hash_get_nth_cell(lock_hash,
-                                            hash_calc_hash(rec_fold, lock_hash))->node;
-    if (previous == NULL) {
-        return;
-    }
-    if (previous == first_lock) {
-        lock = previous;
-    } else {
-        while (previous->hash &&
-               previous->hash != first_lock) {
-            previous = previous->hash;
-        }
-        lock = previous->hash;
-    }
-    /* Grant locks if there are no conflicting locks ahead.
-     Move granted locks to the head of the list. */
-    for (;lock != NULL;) {
-        
-        /* If the lock is a wait lock on this page, and it does not need to wait. */
-        if (lock->un_member.rec_lock.space == space
-            && lock->un_member.rec_lock.page_no == page_no
-            && lock_rec_get_nth_bit(lock, heap_no)
-            && lock_get_wait(lock)
-            && !lock_rec_has_to_wait_in_queue(lock)) {
-            
-            lock_grant(lock, false);
-            
-            if (previous != NULL) {
-                /* Move the lock to the head of the list. */
-                HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
-                lock_rec_insert_to_head(lock, rec_fold);
-            } else {
-                /* Already at the head of the list. */
-                previous = lock;
-            }
-            /* Move on to the next lock. */
-            lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, previous));
-        } else {
-            previous = lock;
-            lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, lock));
-        }
-    }
-}
 
 /*************************************************************//**
 Removes a granted record lock of a transaction from the queue and grants
@@ -4774,59 +4660,60 @@ released:
 	ut_a(!lock_get_wait(lock));
     lock_rec_reset_nth_bit(lock, heap_no);
     
-    rec_fold = lock_rec_fold(lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no);
-    hash_cell_t* cell = hash_get_nth_cell(lock_sys->rec_hash,
-                                          hash_calc_hash(rec_fold,
-                                                         lock_sys->rec_hash));
-    std::vector<lock_t *> read_chunk;
-    lock_t *write_lock = NULL;
-    
-    for (lock = first_lock; lock != NULL;
-         lock = lock_rec_get_next(heap_no, lock)) {
-        if (!lock_get_wait(lock)) {
-            continue;
+    if (innodb_lock_schedule_algorithm
+        == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
+        && !thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
+        rec_fold = lock_rec_fold(lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no);
+        hash_cell_t* cell = hash_get_nth_cell(lock_sys->rec_hash,
+                                              hash_calc_hash(rec_fold,
+                                                             lock_sys->rec_hash));
+        std::vector<lock_t *> read_chunk;
+        lock_t *write_lock = NULL;
+        
+        for (lock = first_lock; lock != NULL;
+             lock = lock_rec_get_next(heap_no, lock)) {
+            if (!lock_get_wait(lock)) {
+                continue;
+            }
+            if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S &&
+                read_chunk.size() < CHUNK_SIZE) {
+                read_chunk.push_back(lock);
+            } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X &&
+                       write_lock != NULL) {
+                write_lock = lock;
+            }
         }
-        if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S &&
-            read_chunk.size() < CHUNK_SIZE) {
-            read_chunk.push_back(lock);
-        } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X &&
-                   write_lock != NULL) {
-            write_lock = lock;
-        }
-    }
-    lint read_sub_tree_size_total = 0;
-    lint write_sub_tree_size = 0;
-    ulint rec_fold = lock_rec_fold(space, page_no);
-    auto &read_chunk = read_chunks[heap_no];
-    auto write_lock = write_locks[heap_no];
-    // 1 for read chunk, -1 for write lock
-    int select_result = 0;
-    for (auto lock : read_chunk) {
-        read_sub_tree_size_total += lock->trx->sub_tree_size;
-    }
-    if (write_lock != NULL) {
-        write_sub_tree_size = write_lock->sub_tree_size;
-    }
-    
-    if (read_chunk.size() > 0 &&
-        write_locks != NULL) {
-        double write_first_cost = read_sub_tree_size_total +
-                                  2 * write_sub_tree_size + CHUNK_SIZE;
-        double read_first_cost = read_sub_tree_size_total + write_sub_tree_size +
-                                 (read_sub_tree_size_total + 1) * finish_time(CHUNK_SIZE);
-        select_result = write_first_cost > read_first_cost? 1 : -1;
-    } else if (write_lock != NULL) {
-        select_result = 1;
-    } else {
-        select_result = -1;
-    }
-    
-    if (select_result == 1) {
+        lint read_sub_tree_size_total = 0;
+        lint write_sub_tree_size = 0;
+        // 1 for read chunk, -1 for write lock
+        int select_result = 0;
         for (auto lock : read_chunk) {
-            lock_grant_and_move(lock_sys->rec_hash, cell, lock, rec_fold);
+            read_sub_tree_size_total += lock->trx->sub_tree_size;
         }
-    } else {
-        lock_grant_and_move(lock_sys->rec_hash, cell, write_lock, rec_fold);
+        if (write_lock != NULL) {
+            write_sub_tree_size = write_lock->trx->sub_tree_size;
+        }
+        
+        if (read_chunk.size() > 0 &&
+            write_lock != NULL) {
+            double write_first_cost = read_sub_tree_size_total +
+                                      2 * write_sub_tree_size + CHUNK_SIZE;
+            double read_first_cost = read_sub_tree_size_total + write_sub_tree_size +
+                                     (read_sub_tree_size_total + 1) * finish_time(CHUNK_SIZE);
+            select_result = write_first_cost > read_first_cost? 1 : -1;
+        } else if (write_lock != NULL) {
+            select_result = 1;
+        } else {
+            select_result = -1;
+        }
+        
+        if (select_result == 1) {
+            for (auto lock : read_chunk) {
+                lock_grant_and_move(lock_sys->rec_hash, cell, lock, rec_fold);
+            }
+        } else {
+            lock_grant_and_move(lock_sys->rec_hash, cell, write_lock, rec_fold);
+        }
     }
     
     for (lock = first_lock; lock != NULL;
