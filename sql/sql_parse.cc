@@ -106,6 +106,7 @@
 #include "table_cache.h"      // table_cache_manager
 #include "transaction.h"      // trans_commit_implicit
 #include "sql_query_rewrite.h"
+#include "trace_tool.h"
 
 #include "rpl_group_replication.h"
 #include <algorithm>
@@ -1191,6 +1192,8 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
 #if defined(ENABLED_PROFILING)
   thd->profiling.start_new_query();
 #endif
+    
+  TraceTool::get_instance()->start_new_query();
 
   /* DTRACE instrumentation, begin */
   MYSQL_COMMAND_START(thd->thread_id(), command,
@@ -1406,6 +1409,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
                       (char *) thd->security_context()->host_or_ip().str);
 
     const char *packet_end= thd->query().str + thd->query().length;
+    TraceTool::get_instance()->set_query(thd->query());
 
     if (opt_general_log_raw)
       query_logger.general_log_write(thd, command, thd->query().str,
@@ -1873,6 +1877,8 @@ done:
 
   thd_manager->dec_thread_running();
   free_root(thd->mem_root,MYF(MY_KEEP_PREALLOC));
+    
+  TraceTool::get_instance()->end_query();
 
   /* DTRACE instrumentation, end */
   if (MYSQL_QUERY_DONE_ENABLED() && command == COM_QUERY)
@@ -4239,6 +4245,7 @@ end_with_restore_list:
     break;
   case SQLCOM_COMMIT:
   {
+    TraceTool::is_commit = true;
     DBUG_ASSERT(thd->lock == NULL ||
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
     bool tx_chain= (lex->tx_chain == TVL_YES ||
@@ -4247,7 +4254,13 @@ end_with_restore_list:
     bool tx_release= (lex->tx_release == TVL_YES ||
                       (thd->variables.completion_type == 2 &&
                        lex->tx_release != TVL_NO));
-    if (trans_commit(thd))
+    bool commit = trans_commit(thd);
+    if (!TraceTool::is_commit)
+    {
+      TraceTool::is_commit = true;
+      TraceTool::commit_successful = false;
+    }
+    if (commit)
       goto error;
     thd->mdl_context.release_transactional_locks();
     /* Begin transaction with the same isolation level. */
@@ -4269,6 +4282,7 @@ end_with_restore_list:
   }
   case SQLCOM_ROLLBACK:
   {
+    TraceTool::is_commit = true;
     DBUG_ASSERT(thd->lock == NULL ||
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
     bool tx_chain= (lex->tx_chain == TVL_YES ||
@@ -4277,7 +4291,13 @@ end_with_restore_list:
     bool tx_release= (lex->tx_release == TVL_YES ||
                       (thd->variables.completion_type == 2 &&
                        lex->tx_release != TVL_NO));
-    if (trans_rollback(thd))
+    bool rollback = trans_rollback(thd);
+    if (!TraceTool::is_commit)
+    {
+      TraceTool::is_commit = true;
+      TraceTool::commit_successful = false;
+    }
+    if (rollback)
       goto error;
     thd->mdl_context.release_transactional_locks();
     /* Begin transaction with the same isolation level. */

@@ -27,6 +27,7 @@ Created 5/7/1996 Heikki Tuuri
 
 #include <mysql/service_thd_engine_lock.h>
 #include <sql_class.h>
+#include <trace_tool.h>
 #include "ha_prototypes.h"
 
 #include "lock0lock.h"
@@ -1688,7 +1689,6 @@ lock_rec_insert_by_subtree_size(
         in_lock->hash = next;
         
         if (lock_get_wait(in_lock) && !lock_rec_has_to_wait_in_queue(in_lock)) {
-            lock_grant(in_lock, true);
             if (cell->node != in_lock) {
                 // Move it to the front of the queue
                 node->hash = in_lock->hash;
@@ -1696,6 +1696,7 @@ lock_rec_insert_by_subtree_size(
                 cell->node = in_lock;
                 in_lock->hash = next;
             }
+            lock_grant(in_lock, true);
             err = DB_SUCCESS_LOCKED_REC;
         }
     }
@@ -1990,6 +1991,8 @@ queue is itself waiting roll it back, also do a deadlock check and resolve.
 dberr_t
 RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 {
+    TraceTool::path_count = 42;
+    TRACE_START();
 	ut_ad(lock_mutex_own());
 	ut_ad(m_trx == thr_get_trx(m_thr));
 	ut_ad(trx_mutex_own(m_trx));
@@ -2010,7 +2013,9 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	/* Attempt to jump over the low priority waiting locks. */
 	if (high_priority && jump_queue(lock, wait_for)) {
 
-		/* Lock is granted */
+        /* Lock is granted */
+        TRACE_END(1);
+        TraceTool::path_count = 0;
 		return(DB_SUCCESS);
 	}
 
@@ -2031,6 +2036,8 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
                     m_rec_id.fold(), lock);
         dberr_t res = lock_rec_insert_by_subtree_size(lock);
         if (res != DB_SUCCESS) {
+            TRACE_END(1);
+            TraceTool::path_count = 0;
             return res;
         }
     }
@@ -2038,7 +2045,9 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	/* m_trx->mysql_thd is NULL if it's an internal trx. So current_thd is used */
 	if (err == DB_LOCK_WAIT) {
 		thd_report_row_lock_wait(current_thd, wait_for->trx->mysql_thd);
-	}
+    }
+    TRACE_END(1);
+    TraceTool::path_count = 0;
 	return(err);
 }
 
@@ -2422,42 +2431,54 @@ static
 void
 lock_grant(
 /*=======*/
-	lock_t*	lock,	/*!< in/out: waiting lock request */
+	lock_t*	in_lock,	/*!< in/out: waiting lock request */
     bool    owns_trx_mutex)    /*!< in: whether lock->trx->mutex is owned */
 {
 	ut_ad(lock_mutex_own());
-    ut_ad(trx_mutex_own(lock->trx) == owns_trx_mutex);
-	lock_reset_lock_and_trx_wait(lock);
+    ut_ad(trx_mutex_own(in_lock->trx) == owns_trx_mutex);
+    
+    lock_t *lock;
+    
+	lock_reset_lock_and_trx_wait(in_lock);
 
     if (!owns_trx_mutex) {
-        trx_mutex_enter(lock->trx);
+        trx_mutex_enter(in_lock->trx);
+    }
+    
+    for (lock = lock_rec_get_next_on_page(in_lock);
+         lock != NULL;
+         lock = lock_rec_get_next_on_page(lock)) {
+        if (lock_get_wait(lock) &&
+            lock_has_to_wait(lock, in_lock)) {
+            handle_trx_sub_tree_change(in_lock->trx, lock->trx->sub_tree_size);
+        }
     }
 
-	if (lock_get_mode(lock) == LOCK_AUTO_INC) {
-		dict_table_t*	table = lock->un_member.tab_lock.table;
+	if (lock_get_mode(in_lock) == LOCK_AUTO_INC) {
+		dict_table_t*	table = in_lock->un_member.tab_lock.table;
 
-		if (table->autoinc_trx == lock->trx) {
+		if (table->autoinc_trx == in_lock->trx) {
 			ib::error() << "Transaction already had an"
 				<< " AUTO-INC lock!";
 		} else {
-			table->autoinc_trx = lock->trx;
+			table->autoinc_trx = in_lock->trx;
 
-			ib_vector_push(lock->trx->autoinc_locks, &lock);
+			ib_vector_push(in_lock->trx->autoinc_locks, &in_lock);
 		}
 	}
 
 	DBUG_PRINT("ib_lock", ("wait for trx " TRX_ID_FMT " ends",
-			       trx_get_id_for_print(lock->trx)));
+			       trx_get_id_for_print(in_lock->trx)));
 
 	/* If we are resolving a deadlock by choosing another transaction
 	as a victim, then our original transaction may not be in the
 	TRX_QUE_LOCK_WAIT state, and there is no need to end the lock wait
 	for it */
 
-	if (lock->trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
+	if (in_lock->trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
 		que_thr_t*	thr;
 
-		thr = que_thr_end_lock_wait(lock->trx);
+		thr = que_thr_end_lock_wait(in_lock->trx);
 
 		if (thr != NULL) {
 			lock_wait_release_thread_if_suspended(thr);
@@ -2465,7 +2486,7 @@ lock_grant(
 	}
 
     if (!owns_trx_mutex) {
-        trx_mutex_exit(lock->trx);
+        trx_mutex_exit(in_lock->trx);
     }
 }
 
@@ -2759,6 +2780,8 @@ lock_rec_dequeue_from_page(
 					get their lock requests granted,
 					if they are now qualified to it */
 {
+    TraceTool::path_count = 42;
+    TRACE_START();
 	ulint		space;
 	ulint		page_no;
     ulint       heap_no;
@@ -2792,7 +2815,7 @@ lock_rec_dequeue_from_page(
     
     if (innodb_lock_schedule_algorithm
         == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-        && !thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
+        && !thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {
     
         hash_cell_t* cell = hash_get_nth_cell(lock_hash,
                                               hash_calc_hash(rec_fold,
@@ -2842,9 +2865,9 @@ lock_rec_dequeue_from_page(
                 double read_first_cost = read_sub_tree_size_total + write_sub_tree_size +
                                          (read_sub_tree_size_total + 1) * finish_time(CHUNK_SIZE);
                 select_result = write_first_cost > read_first_cost? 1 : -1;
-            } else if (write_lock != NULL) {
+            } else if (write_lock == NULL) {
                 select_result = 1;
-            } else {
+            } else if (read_chunk.size() > 0) {
                 select_result = -1;
             }
             
@@ -2852,7 +2875,8 @@ lock_rec_dequeue_from_page(
                 for (auto lock : read_chunk) {
                     lock_grant_and_move(lock_hash, cell, lock, rec_fold);
                 }
-            } else {
+                
+            } else if (select_result == -1) {
                 lock_grant_and_move(lock_hash, cell, write_lock, rec_fold);
             }
         }
@@ -2871,6 +2895,8 @@ lock_rec_dequeue_from_page(
             lock_grant(lock, false);
         }
     }
+    TRACE_END(2);
+    TraceTool::path_count = 0;
 }
 
 /*************************************************************//**
@@ -4701,9 +4727,9 @@ released:
             double read_first_cost = read_sub_tree_size_total + write_sub_tree_size +
                                      (read_sub_tree_size_total + 1) * finish_time(CHUNK_SIZE);
             select_result = write_first_cost > read_first_cost? 1 : -1;
-        } else if (write_lock != NULL) {
+        } else if (write_lock == NULL) {
             select_result = 1;
-        } else {
+        } else if (read_chunk.size() > 0) {
             select_result = -1;
         }
         
@@ -4711,7 +4737,7 @@ released:
             for (auto lock : read_chunk) {
                 lock_grant_and_move(lock_sys->rec_hash, cell, lock, rec_fold);
             }
-        } else {
+        } else if (select_result == -1) {
             lock_grant_and_move(lock_sys->rec_hash, cell, write_lock, rec_fold);
         }
     }

@@ -40,6 +40,8 @@ Created 2/16/1996 Heikki Tuuri
 
 #include "my_global.h"
 
+#include <trace_tool.h>
+
 #include "ha_prototypes.h"
 
 #include "mysqld.h"
@@ -2766,6 +2768,8 @@ innobase_shutdown_for_mysql(void)
 
 	srv_was_started = FALSE;
 	srv_start_has_been_called = FALSE;
+    
+    delete TraceTool::get_instance();
 
 	return(DB_SUCCESS);
 }

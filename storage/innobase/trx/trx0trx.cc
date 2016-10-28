@@ -23,6 +23,8 @@ The transaction
 Created 3/26/1996 Heikki Tuuri
 *******************************************************/
 
+#include <trace_tool.h>
+
 #include "ha_prototypes.h"
 
 #include "trx0trx.h"
@@ -2189,6 +2191,7 @@ trx_commit(
 	mtr_t*	mtr;
 	mtr_t	local_mtr;
 
+    TraceTool::is_commit = true;
 	DBUG_EXECUTE_IF("ib_trx_commit_crash_before_trx_commit_start",
 			DBUG_SUICIDE(););
 

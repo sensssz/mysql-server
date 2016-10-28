@@ -23,6 +23,8 @@ Transaction rollback
 Created 3/26/1996 Heikki Tuuri
 *******************************************************/
 
+#include <trace_tool.h>
+
 #include "ha_prototypes.h"
 
 #include "trx0roll.h"
@@ -1154,6 +1156,8 @@ trx_rollback_finish(
 	trx->mod_tables.clear();
 
 	trx->lock.que_state = TRX_QUE_RUNNING;
+    
+    TraceTool::commit_successful = false;
 }
 
 /*********************************************************************//**
