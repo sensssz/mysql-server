@@ -11,8 +11,9 @@
 
 #define NUM_CORES 2
 #define TARGET_PATH_COUNT 42
-#define NUMBER_OF_FUNCTIONS 0
+#define NUMBER_OF_FUNCTIONS 2
 #define LATENCY
+#define MONITOR
 
 #define NEW_ORDER_MARKER "SELECT C_DISCOUNT, C_LAST, C_CREDIT, W_TAX  FROM CUSTOMER, WAREHOUSE WHERE"
 #define PAYMENT_MARKER "UPDATE WAREHOUSE SET W_YTD = W_YTD"
@@ -53,11 +54,6 @@ __thread transaction_type TraceTool::type = NONE;
 long TraceTool::num_trans[TRX_TYPES] = {0};
 double TraceTool::mean_latency[TRX_TYPES] = {0};
 
-deque<buf_page_t *> TraceTool::pages_to_make_young;
-deque<ib_uint32_t> TraceTool::space_ids;
-deque<ib_uint32_t> TraceTool::page_nos;
-
-pthread_mutex_t TraceTool::buf_page_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t TraceTool::var_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static const size_t NEW_ORDER_LENGTH = strlen(NEW_ORDER_MARKER);

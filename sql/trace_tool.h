@@ -1,9 +1,6 @@
 #ifndef MY_TRACE_TOOL_H
 #define MY_TRACE_TOOL_H
 
-#include "../storage/innobase/include/os0sync.h"
-#include "../storage/innobase/include/lock0types.h"
-#include "../storage/innobase/include/buf0buf.h"
 #include <fstream>
 #include <list>
 #include <vector>
@@ -115,11 +112,6 @@ public:
     
     ulint num_waits;
     ulint total_locks;
-    
-    static deque<buf_page_t *> pages_to_make_young;
-    static deque<ib_uint32_t> space_ids;
-    static deque<ib_uint32_t> page_nos;
-    static pthread_mutex_t buf_page_mutex;
     
     /********************************************************************//**
     The Singleton pattern. Used for getting the instance of this class. */
