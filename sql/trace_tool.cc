@@ -8,6 +8,7 @@
 #include <sstream>
 #include <cstdlib>
 #include <cassert>
+#include <unistd.h>
 
 #define NUM_CORES 2
 #define TARGET_PATH_COUNT 42
