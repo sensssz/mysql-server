@@ -1409,7 +1409,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
                       (char *) thd->security_context()->host_or_ip().str);
 
     const char *packet_end= thd->query().str + thd->query().length;
-    TraceTool::get_instance()->set_query(thd->query().str().c_str());
+    TraceTool::get_instance()->set_query(thd->query().str);
 
     if (opt_general_log_raw)
       query_logger.general_log_write(thd, command, thd->query().str,
