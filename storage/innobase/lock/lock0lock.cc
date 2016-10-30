@@ -1736,7 +1736,7 @@ lock_queue_validate(
     while (next != NULL) {
         // If this is a granted lock, check that there's no wait lock before it.
         if (!lock_get_wait(next)) {
-            ut_ad(!wait_lock);
+            ut_a(!wait_lock);
         } else {
             wait_lock = true;
         }
@@ -4801,12 +4801,12 @@ released:
                 lock->batch_scheduled = true;
             }
             for (auto lock : read_chunk) {
-                lock_grant_and_move(lock_hash, cell, lock, rec_fold);
+                lock_grant_and_move(lock_sys->rec_hash, cell, lock, rec_fold);
             }
             
         } else if (select_result == -1) {
             write_lock->batch_scheduled = true;
-            lock_grant_and_move(lock_hash, cell, write_lock, rec_fold);
+            lock_grant_and_move(lock_sys->rec_hash, cell, write_lock, rec_fold);
         }
     }
     
