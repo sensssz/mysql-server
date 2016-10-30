@@ -1630,25 +1630,57 @@ Add the lock to the record lock hash and the transaction's lock list
 @param[in,out] lock	Newly created record lock to add to the rec hash
 @param[in] add_to_hash	If the lock should be added to the hash table */
 void
-RecLock::lock_add(lock_t* lock, bool add_to_hash)
+RecLock::lock_add(lock_t* in_lock, bool add_to_hash)
 {
 	ut_ad(lock_mutex_own());
-	ut_ad(trx_mutex_own(lock->trx));
+	ut_ad(trx_mutex_own(in_lock->trx));
     
-    bool wait_lock = m_mode & LOCK_WAIT;
+    bool        wait_lock;
+    ulint       space;
+    ulint       page_no;
+    ulint       heap_no;
+    ulint       sub_tree_size_change;
+    lock_t*     lock;
+    hash_table_t*   lock_hash;
+    
+    wait_lock = m_mode & LOCK_WAIT;
+    space = in_lock->un_member.rec_lock.space;
+    page_no = in_lock->un_member.rec_lock.space;
+    heap_no = lock_rec_find_set_bit(in_lock);
+    lock_hash = lock_hash_get(m_mode);
 
 	if (add_to_hash) {
 		ulint	key = m_rec_id.fold();
-        hash_table_t *lock_hash = lock_hash_get(m_mode);
 
 		++lock->index->table->n_rec_locks;
         
-        HASH_INSERT(lock_t, hash, lock_hash, key, lock);
+        HASH_INSERT(lock_t, hash, lock_hash, key, in_lock);
 	}
 
 	if (wait_lock) {
 		lock_set_lock_and_trx_wait(lock, lock->trx);
-	}
+        lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
+        if (!lock_rec_get_nth_bit(lock, heap_no)) {
+            lock = lock_rec_get_next(heap_no, lock);
+        }
+        for (; lock != ; lock = lock_rec_get_next(heap_no, lock)) {
+            if (!lock_get_wait(lock)) {
+                handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size);
+            }
+        }
+    } else {
+        sub_tree_size_change = 0;
+        lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
+        if (!lock_rec_get_nth_bit(lock, heap_no)) {
+            lock = lock_rec_get_next(heap_no, lock);
+        }
+        for (; lock != ; lock = lock_rec_get_next(heap_no, lock)) {
+            if (lock_get_wait(lock)) {
+                sub_tree_size_change += lock->trx->sub_tree_size;
+            }
+        }
+        handle_trx_sub_tree_change(in_lock->trx, sub_tree_size_change);
+    }
 
 	UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, lock);
 }
@@ -1864,8 +1896,6 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	if (high_priority && jump_queue(lock, wait_for)) {
 
         /* Lock is granted */
-        TRACE_END(1);
-        TraceTool::path_count = 0;
 		return(DB_SUCCESS);
 	}
 
@@ -2272,7 +2302,24 @@ lock_grant(
     ulint       heap_no = lock_rec_find_set_bit(in_lock);
     int         sub_tree_change = 0;
     
-	lock_reset_lock_and_trx_wait(in_lock);
+    lock_reset_lock_and_trx_wait(in_lock);
+    
+    if (!owns_trx_mutex) {
+        trx_mutex_enter(in_lock->trx);
+    }
+    
+    if (lock != NULL &&
+        !lock_rec_get_nth_bit(lock, heap_no)) {
+        lock = lock_rec_get_next(heap_no, lock);
+    }
+    for (; lock != NULL;
+         lock = lock_rec_get_next(heap_no, lock)) {
+        if (lock_get_wait(lock)
+            && !lock->batch_scheduled) {
+            sub_tree_change += lock->trx->sub_tree_size;
+        }
+    }
+    handle_trx_sub_tree_change(in_lock->trx, sub_tree_change);
 
     if (!owns_trx_mutex) {
         trx_mutex_enter(in_lock->trx);
