@@ -2843,8 +2843,6 @@ lock_rec_dequeue_from_page(
 					get their lock requests granted,
 					if they are now qualified to it */
 {
-    TraceTool::path_count = 42;
-    TRACE_START();
 	ulint		space;
 	ulint		page_no;
     ulint       heap_no;
@@ -2876,79 +2874,6 @@ lock_rec_dequeue_from_page(
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
     MONITOR_DEC(MONITOR_NUM_RECLOCK);
     
-    if (innodb_lock_schedule_algorithm
-        == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-        && !thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {
-    
-        hash_cell_t* cell = hash_get_nth_cell(lock_hash,
-                                              hash_calc_hash(rec_fold,
-                                                             lock_hash));
-        std::unordered_map<ulint, std::vector<lock_t *>> read_chunks;
-        std::unordered_map<ulint, lock_t *> write_locks;
-        std::set<ulint> heap_nos;
-        
-        for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
-                                                    page_no);
-             lock != NULL;
-             lock = lock_rec_get_next_on_page(lock)) {
-            if (!lock_get_wait(lock)) {
-                continue;
-            }
-            heap_no = lock_rec_find_set_bit(lock);
-            if (lock_rec_get_nth_bit(in_lock, heap_no) &&
-                !lock_rec_has_to_wait_granted(lock)) {
-                heap_nos.insert(heap_no);
-                if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S &&
-                    read_chunks[heap_no].size() < CHUNK_SIZE) {
-                    read_chunks[heap_no].push_back(lock);
-                } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X &&
-                           write_locks[heap_no] == NULL) {
-                    write_locks[heap_no] = lock;
-                }
-            }
-        }
-        for (auto heap_no : heap_nos) {
-            lint read_sub_tree_size_total = 0;
-            lint write_sub_tree_size = 0;
-            auto &read_chunk = read_chunks[heap_no];
-            auto write_lock = write_locks[heap_no];
-            // 1 for read chunk, -1 for write lock
-            int select_result = 0;
-            for (auto lock : read_chunk) {
-                read_sub_tree_size_total += lock->trx->sub_tree_size;
-            }
-            if (write_lock != NULL) {
-                write_sub_tree_size = write_lock->trx->sub_tree_size;
-            }
-            
-            if (read_chunk.size() > 0 &&
-                write_lock != NULL) {
-                double write_first_cost = read_sub_tree_size_total +
-                                          2 * write_sub_tree_size + CHUNK_SIZE;
-                double read_first_cost = read_sub_tree_size_total + write_sub_tree_size +
-                                         (read_sub_tree_size_total + 1) * finish_time(read_chunk.size());
-                select_result = write_first_cost > read_first_cost? 1 : -1;
-            } else if (write_lock == NULL) {
-                select_result = 1;
-            } else if (read_chunk.size() > 0) {
-                select_result = -1;
-            }
-            
-            if (select_result == 1) {
-                for (auto lock : read_chunk) {
-                    lock->batch_scheduled = true;
-                }
-                for (auto lock : read_chunk) {
-                    lock_grant_and_move(lock_hash, cell, lock, rec_fold);
-                }
-
-            } else if (select_result == -1) {
-                write_lock->batch_scheduled = true;
-                lock_grant_and_move(lock_hash, cell, write_lock, rec_fold);
-            }
-        }
-    }
-    
     for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
                                                 page_no);
          lock != NULL;
@@ -2962,8 +2887,6 @@ lock_rec_dequeue_from_page(
             lock_grant(lock, false);
         }
     }
-    TRACE_END(2);
-    TraceTool::path_count = 0;
 }
 
 /*************************************************************//**
@@ -4753,61 +4676,6 @@ released:
 	ut_a(!lock_get_wait(lock));
     lock_rec_reset_nth_bit(lock, heap_no);
     
-    if (innodb_lock_schedule_algorithm
-        == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-        && !thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
-        rec_fold = lock_rec_fold(lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no);
-        hash_cell_t* cell = hash_get_nth_cell(lock_sys->rec_hash,
-                                              hash_calc_hash(rec_fold,
-                                                             lock_sys->rec_hash));
-        std::vector<lock_t *> read_chunk;
-        lock_t *write_lock = NULL;
-        
-        for (lock = first_lock; lock != NULL;
-             lock = lock_rec_get_next(heap_no, lock)) {
-            if (!lock_get_wait(lock)) {
-                continue;
-            }
-            if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S &&
-                read_chunk.size() < CHUNK_SIZE) {
-                read_chunk.push_back(lock);
-            } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X &&
-                       write_lock != NULL) {
-                write_lock = lock;
-            }
-        }
-        lint read_sub_tree_size_total = 0;
-        lint write_sub_tree_size = 0;
-        // 1 for read chunk, -1 for write lock
-        int select_result = 0;
-        for (auto lock : read_chunk) {
-            read_sub_tree_size_total += lock->trx->sub_tree_size;
-        }
-        if (write_lock != NULL) {
-            write_sub_tree_size = write_lock->trx->sub_tree_size;
-        }
-        
-        if (read_chunk.size() > 0 &&
-            write_lock != NULL) {
-            double write_first_cost = read_sub_tree_size_total +
-                                      2 * write_sub_tree_size + CHUNK_SIZE;
-            double read_first_cost = read_sub_tree_size_total + write_sub_tree_size +
-                                     (read_sub_tree_size_total + 1) * finish_time(CHUNK_SIZE);
-            select_result = write_first_cost > read_first_cost? 1 : -1;
-        } else if (write_lock == NULL) {
-            select_result = 1;
-        } else if (read_chunk.size() > 0) {
-            select_result = -1;
-        }
-        
-        if (select_result == 1) {
-            for (auto lock : read_chunk) {
-                lock_grant_and_move(lock_sys->rec_hash, cell, lock, rec_fold);
-            }
-        } else if (select_result == -1) {
-            lock_grant_and_move(lock_sys->rec_hash, cell, write_lock, rec_fold);
-        }
-    }
     
     for (lock = first_lock; lock != NULL;
          lock = lock_rec_get_next(heap_no, lock)) {
@@ -4819,26 +4687,6 @@ released:
             lock_grant(lock, false);
         }
     }
-    
-//    if (innodb_lock_schedule_algorithm
-//        == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS ||
-//        thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
-//
-//        /* Check if we can now grant waiting lock requests */
-//
-//        for (lock = first_lock; lock != NULL;
-//             lock = lock_rec_get_next(heap_no, lock)) {
-//            if (lock_get_wait(lock)
-//                && !lock_rec_has_to_wait_in_queue(lock)) {
-//
-//                /* Grant the lock */
-//                ut_ad(trx != lock->trx);
-//                lock_grant(lock, false);
-//            }
-//        }
-//    } else {
-//        lock_grant_and_move_on_rec(lock_sys->rec_hash, first_lock, heap_no);
-//    }
 
 	lock_mutex_exit();
 	trx_mutex_exit(trx);
