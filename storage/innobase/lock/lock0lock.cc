@@ -2926,7 +2926,7 @@ lock_rec_dequeue_from_page(
                 double write_first_cost = read_sub_tree_size_total +
                                           2 * write_sub_tree_size + CHUNK_SIZE;
                 double read_first_cost = read_sub_tree_size_total + write_sub_tree_size +
-                                         (read_sub_tree_size_total + 1) * finish_time(CHUNK_SIZE);
+                                         (read_sub_tree_size_total + 1) * finish_time(read_chunk.size());
                 select_result = write_first_cost > read_first_cost? 1 : -1;
             } else if (write_lock == NULL) {
                 select_result = 1;
