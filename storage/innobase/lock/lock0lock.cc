@@ -73,34 +73,6 @@ static const ulint	TABLE_LOCK_CACHE = 8;
 /** Size in bytes, of the table lock instance */
 static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
-static const int CHUNK_SIZE = 3;
-static
-double
-finish_time(
-    int chunk_size)
-{
-    return log2(chunk_size + 1);
-}
-
-/*********************************************************************//**
-Checks if a waiting record lock request still has to wait in a queue.
-@return lock that is causing the wait */
-static
-const lock_t*
-lock_rec_has_to_wait_in_queue(
-/*==========================*/
-  const lock_t*	wait_lock);	/*!< in: waiting record lock */
-
-/*************************************************************//**
-Grants a lock to a waiting lock request and releases the waiting transaction.
-The caller must hold lock_sys->mutex. */
-static
-void
-lock_grant(
-/*=======*/
-	lock_t*	lock,	/*!< in/out: waiting lock request */
-    bool    owns_trx_mutex);    /*!< in: whether lock->trx->mutex is owned */
-
 /** Deadlock checker. */
 class DeadlockChecker {
 public:
@@ -2601,23 +2573,6 @@ lock_rec_cancel(
 	}
 
 	trx_mutex_exit(lock->trx);
-}
-
-static
-void
-lock_grant_and_move(
-    hash_table_t*   lock_hash,
-    hash_cell_t*    cell,
-    lock_t*         lock,
-    ulint           rec_fold)
-{
-    lock_grant(lock, false);
-    HASH_DELETE(lock_t, hash, lock_hash, rec_fold, lock);
-    if (lock != cell->node) {
-        lock_t *next = (lock_t *) cell->node;
-        cell->node = lock;
-        lock->hash = next;
-    }
 }
 
 /*************************************************************//**
