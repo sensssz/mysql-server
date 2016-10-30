@@ -2241,55 +2241,6 @@ Checks if a waiting record lock request still has to wait in a queue.
 @return lock that is causing the wait */
 static
 const lock_t*
-lock_rec_has_to_wait_granted(
-/*==========================*/
-	const lock_t*	wait_lock)	/*!< in: waiting record lock */
-{
-	const lock_t*	lock;
-	ulint		space;
-	ulint		page_no;
-	ulint		heap_no;
-	ulint		bit_mask;
-	ulint		bit_offset;
-	hash_table_t*	hash;
-
-	ut_ad(lock_mutex_own());
-	ut_ad(lock_get_wait(wait_lock));
-	ut_ad(lock_get_type_low(wait_lock) == LOCK_REC);
-
-	space = wait_lock->un_member.rec_lock.space;
-	page_no = wait_lock->un_member.rec_lock.page_no;
-	heap_no = lock_rec_find_set_bit(wait_lock);
-
-	bit_offset = heap_no / 8;
-	bit_mask = static_cast<ulint>(1 << (heap_no % 8));
-
-	hash = lock_hash_get(wait_lock->type_mode);
-
-	for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
-	     lock != wait_lock;
-	     lock = lock_rec_get_next_on_page_const(lock)) {
-
-		const byte*	p = (const byte*) &lock[1];
-
-		if (!lock_get_wait(lock)
-            && !lock->batch_scheduled
-            && heap_no < lock_rec_get_n_bits(lock)
-		    && (p[bit_offset] & bit_mask)
-		    && lock_has_to_wait(wait_lock, lock)) {
-
-			return(lock);
-		}
-	}
-
-	return(NULL);
-}
-
-/*********************************************************************//**
-Checks if a waiting record lock request still has to wait in a queue.
-@return lock that is causing the wait */
-static
-const lock_t*
 lock_rec_has_to_wait_in_queue(
 /*==========================*/
 	const lock_t*	wait_lock)	/*!< in: waiting record lock */
@@ -2354,19 +2305,6 @@ lock_grant(
     if (!owns_trx_mutex) {
         trx_mutex_enter(in_lock->trx);
     }
-    
-    if (lock != NULL &&
-        !lock_rec_get_nth_bit(lock, heap_no)) {
-        lock = lock_rec_get_next(heap_no, lock);
-    }
-    for (; lock != NULL;
-         lock = lock_rec_get_next(heap_no, lock)) {
-        if (lock_get_wait(lock)
-            && !lock->batch_scheduled) {
-            sub_tree_change += lock->trx->sub_tree_size;
-        }
-    }
-    handle_trx_sub_tree_change(in_lock->trx, sub_tree_change);
 
 	if (lock_get_mode(in_lock) == LOCK_AUTO_INC) {
 		dict_table_t*	table = in_lock->un_member.tab_lock.table;
