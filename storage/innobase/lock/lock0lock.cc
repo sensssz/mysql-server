@@ -79,7 +79,7 @@ double
 finish_time(
     int chunk_size)
 {
-    return log2(chunk_size);
+    return log2(chunk_size + 1);
 }
 
 /*********************************************************************//**
