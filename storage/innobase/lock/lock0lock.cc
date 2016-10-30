@@ -1525,38 +1525,6 @@ RecLock::lock_alloc(
 	return(lock);
 }
 
-/*********************************************************************//**
-Check if lock1 has higher priority than lock2.
-NULL has lowest priority.
-If either is a high priority transaction, the lock has higher priority.
-If neither of them is wait lock, the first one has higher priority.
-If only one of them is a wait lock, it has lower priority.
-Otherwise, the one with an older transaction has higher priority.
-@returns true if lock1 has higher priority, false otherwise. */
-bool
-has_higher_priority(
-	lock_t *lock1,
-	lock_t *lock2)
-{
-	if (lock1 == NULL) {
-		return false;
-	} else if (lock2 == NULL) {
-		return true;
-	}
-    if (trx_is_high_priority(lock1->trx)) {
-        return true;
-    }
-    if (trx_is_high_priority(lock2->trx)) {
-        return false;
-    }
-	if (!lock_get_wait(lock1)) {
-		return true;
-	} else if (!lock_get_wait(lock2)) {
-		return false;
-	}
-	return lock1->trx->sub_tree_size >= lock2->trx->sub_tree_size;
-}
-
 static
 void
 handle_trx_sub_tree_change(
@@ -1648,67 +1616,6 @@ lock_rec_fix_sub_tree_size(
     }
 }
 
-/*********************************************************************//**
-Insert a lock to the hash list according to the mode (whether it is a wait
-lock) and the age of the transaction the it is associated with.
-If the lock is not a wait lock, insert it to the head of the hash list.
-Otherwise, insert it to the middle of the wait locks according to the age of
-the transaciton. */
-static
-dberr_t
-lock_rec_insert_by_subtree_size(
-	lock_t *in_lock) /*!< in: lock to be insert */{
-    ulint               space;
-    ulint               page_no;
-	ulint				rec_fold;
-    hash_table_t*       hash;
-	hash_cell_t*        cell;
-	lock_t*				node;
-	lock_t*				next;
-    dberr_t             err;
-
-    space = in_lock->un_member.rec_lock.space;
-    page_no = in_lock->un_member.rec_lock.page_no;
-	rec_fold = lock_rec_fold(space, page_no);
-    hash = lock_hash_get(in_lock->type_mode);
-	cell = hash_get_nth_cell(hash,
-				 hash_calc_hash(rec_fold, hash));
-
-    err = DB_SUCCESS;
-    node = (lock_t *) cell->node;
-    lock_rec_fix_sub_tree_size(in_lock);
-	// If in_lock is not a wait lock, we insert it to the head of the list.
-	if (node == NULL || !lock_get_wait(in_lock) || has_higher_priority(in_lock, node)) {
-		cell->node = in_lock;
-		in_lock->hash = node;
-        if (lock_get_wait(in_lock)) {
-            lock_grant(in_lock, true);
-            err = DB_SUCCESS_LOCKED_REC;
-        }
-	} else {
-        while (node != NULL && has_higher_priority((lock_t *) node->hash,
-                               in_lock)) {
-            node = (lock_t *) node->hash;
-        }
-        next = (lock_t *) node->hash;
-        node->hash = in_lock;
-        in_lock->hash = next;
-        
-        if (lock_get_wait(in_lock) && !lock_rec_has_to_wait_in_queue(in_lock)) {
-            if (cell->node != in_lock) {
-                // Move it to the front of the queue
-                node->hash = in_lock->hash;
-                next = (lock_t *) cell->node;
-                cell->node = in_lock;
-                in_lock->hash = next;
-            }
-            lock_grant(in_lock, true);
-            err = DB_SUCCESS_LOCKED_REC;
-        }
-    }
-    return err;
-}
-
 static
 bool
 lock_queue_validate(
@@ -1745,30 +1652,6 @@ lock_queue_validate(
     return true;
 }
 
-static
-void
-lock_rec_insert_to_head(
-	lock_t *in_lock,   /*!< in: lock to be insert */
-    ulint   rec_fold)  /*!< in: rec_fold of the page */
-{
-    hash_table_t*       hash;
-    hash_cell_t*        cell;
-    lock_t*				node;
-    
-    if (in_lock == NULL) {
-        return;
-    }
-    
-    hash = lock_hash_get(in_lock->type_mode);
-    cell = hash_get_nth_cell(hash,
-                             hash_calc_hash(rec_fold, hash));
-    node = (lock_t *) cell->node;
-    if (node != in_lock) {
-        cell->node = in_lock;
-        in_lock->hash = node;
-    }
-}
-
 
 /**
 Add the lock to the record lock hash and the transaction's lock list
@@ -1788,16 +1671,7 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 		++lock->index->table->n_rec_locks;
         
-        if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-            && !thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
-            if (wait_lock) {
-                HASH_INSERT(lock_t, hash, lock_hash, key, lock);
-            } else {
-                lock_rec_insert_to_head(lock, m_rec_id.fold());
-            }
-        } else {
-            HASH_INSERT(lock_t, hash, lock_hash, key, lock);
-        }
+        HASH_INSERT(lock_t, hash, lock_hash, key, lock);
 	}
 
 	if (wait_lock) {
@@ -1997,8 +1871,6 @@ queue is itself waiting roll it back, also do a deadlock check and resolve.
 dberr_t
 RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 {
-    TraceTool::path_count = 42;
-    TRACE_START();
 	ut_ad(lock_mutex_own());
 	ut_ad(m_trx == thr_get_trx(m_thr));
 	ut_ad(trx_mutex_own(m_trx));
@@ -2030,30 +1902,11 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	dberr_t	err = deadlock_check(lock);
 
 	ut_ad(trx_mutex_own(m_trx));
-    
-    // Move it only when it does not cause a deadlock.
-    if (err != DB_DEADLOCK
-        && innodb_lock_schedule_algorithm
-            == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-        && !thd_is_replication_slave_thread(lock->trx->mysql_thd)
-        && !trx_is_high_priority(lock->trx)) {
-        
-        HASH_DELETE(lock_t, hash, lock_hash_get(lock->type_mode),
-                    m_rec_id.fold(), lock);
-        dberr_t res = lock_rec_insert_by_subtree_size(lock);
-        if (res != DB_SUCCESS) {
-            TRACE_END(1);
-            TraceTool::path_count = 0;
-            return res;
-        }
-    }
 
 	/* m_trx->mysql_thd is NULL if it's an internal trx. So current_thd is used */
 	if (err == DB_LOCK_WAIT) {
 		thd_report_row_lock_wait(current_thd, wait_for->trx->mysql_thd);
     }
-    TRACE_END(1);
-    TraceTool::path_count = 0;
 	return(err);
 }
 
