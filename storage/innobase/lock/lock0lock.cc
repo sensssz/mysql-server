@@ -1515,6 +1515,8 @@ RecLock::lock_alloc(
 	/* Set the bit corresponding to rec */
 
 	lock_rec_set_nth_bit(lock, rec_id.m_heap_no);
+    
+    lock->batch_scheduled = false;
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK);
 
@@ -1565,7 +1567,7 @@ handle_trx_sub_tree_change(
     ulint		page_no;
     ulint		heap_no;
     lock_t*     wait_lock;
-    const lock_t*   lock;
+    lock_t*     lock;
     hash_table_t*	hash;
     
     trx->sub_tree_size += sub_tree_size_change;
@@ -1578,12 +1580,15 @@ handle_trx_sub_tree_change(
     page_no = wait_lock->un_member.rec_lock.page_no;
     heap_no = lock_rec_find_set_bit(wait_lock);
     hash = lock_hash_get(wait_lock->type_mode);
-    for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
-         lock != wait_lock;
-         lock = lock_rec_get_next_on_page_const(lock)) {
-        if (lock->un_member.rec_lock.space == space
+    lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
+    if (!lock_rec_get_nth_bit(lock, heap_no)) {
+        lock = lock_rec_get_next(heap_no, lock);
+    }
+    for (; lock != wait_lock;
+         lock = lock_rec_get_next(heap_no, lock)) {
+        if (!lock_get_wait(lock)
+            && lock->un_member.rec_lock.space == space
             && lock->un_member.rec_lock.page_no == page_no
-            && lock_rec_get_nth_bit(lock, heap_no)
             && lock_has_to_wait(wait_lock, lock)) {
             handle_trx_sub_tree_change(lock->trx, sub_tree_size_change);
         }
@@ -1602,6 +1607,7 @@ lock_rec_fix_sub_tree_size(
 	ulint		heap_no;
 	ulint		bit_mask;
 	ulint		bit_offset;
+    int         sub_tree_size_change = 0;
 	hash_table_t*	hash;
 
 	ut_ad(lock_mutex_own());
@@ -1634,11 +1640,11 @@ lock_rec_fix_sub_tree_size(
              lock != NULL;
              lock = lock_rec_get_next_on_page_const(lock)) {
             if (lock_get_wait(lock)
-                && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))
-                && lock_has_to_wait(lock, in_lock)) {
-                handle_trx_sub_tree_change(in_lock->trx, lock->trx->sub_tree_size);
+                && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))) {
+                sub_tree_size_change += lock->trx->sub_tree_size;
             }
         }
+        handle_trx_sub_tree_change(in_lock->trx, sub_tree_size_change);
     }
 }
 
@@ -2382,6 +2388,55 @@ Checks if a waiting record lock request still has to wait in a queue.
 @return lock that is causing the wait */
 static
 const lock_t*
+lock_rec_has_to_wait_granted(
+/*==========================*/
+	const lock_t*	wait_lock)	/*!< in: waiting record lock */
+{
+	const lock_t*	lock;
+	ulint		space;
+	ulint		page_no;
+	ulint		heap_no;
+	ulint		bit_mask;
+	ulint		bit_offset;
+	hash_table_t*	hash;
+
+	ut_ad(lock_mutex_own());
+	ut_ad(lock_get_wait(wait_lock));
+	ut_ad(lock_get_type_low(wait_lock) == LOCK_REC);
+
+	space = wait_lock->un_member.rec_lock.space;
+	page_no = wait_lock->un_member.rec_lock.page_no;
+	heap_no = lock_rec_find_set_bit(wait_lock);
+
+	bit_offset = heap_no / 8;
+	bit_mask = static_cast<ulint>(1 << (heap_no % 8));
+
+	hash = lock_hash_get(wait_lock->type_mode);
+
+	for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
+	     lock != wait_lock;
+	     lock = lock_rec_get_next_on_page_const(lock)) {
+
+		const byte*	p = (const byte*) &lock[1];
+
+		if (!lock_get_wait(lock)
+            && !lock->batch_scheduled
+            && heap_no < lock_rec_get_n_bits(lock)
+		    && (p[bit_offset] & bit_mask)
+		    && lock_has_to_wait(wait_lock, lock)) {
+
+			return(lock);
+		}
+	}
+
+	return(NULL);
+}
+
+/*********************************************************************//**
+Checks if a waiting record lock request still has to wait in a queue.
+@return lock that is causing the wait */
+static
+const lock_t*
 lock_rec_has_to_wait_in_queue(
 /*==========================*/
 	const lock_t*	wait_lock)	/*!< in: waiting record lock */
@@ -2437,7 +2492,9 @@ lock_grant(
 	ut_ad(lock_mutex_own());
     ut_ad(trx_mutex_own(in_lock->trx) == owns_trx_mutex);
     
-    lock_t *lock;
+    lock_t*     lock = lock_rec_get_next_on_page(in_lock);
+    ulint       heap_no = lock_rec_find_set_bit(in_lock);
+    int         sub_tree_change = 0;
     
 	lock_reset_lock_and_trx_wait(in_lock);
 
@@ -2445,14 +2502,18 @@ lock_grant(
         trx_mutex_enter(in_lock->trx);
     }
     
-    for (lock = lock_rec_get_next_on_page(in_lock);
-         lock != NULL;
-         lock = lock_rec_get_next_on_page(lock)) {
-        if (lock_get_wait(lock) &&
-            lock_has_to_wait(lock, in_lock)) {
-            handle_trx_sub_tree_change(in_lock->trx, lock->trx->sub_tree_size);
+    if (lock != NULL &&
+        !lock_rec_get_nth_bit(lock, heap_no)) {
+        lock = lock_rec_get_next(heap_no, lock);
+    }
+    for (; lock != NULL;
+         lock = lock_rec_get_next(heap_no, lock)) {
+        if (lock_get_wait(lock)
+            && !lock->batch_scheduled) {
+            sub_tree_change += lock->trx->sub_tree_size;
         }
     }
+    handle_trx_sub_tree_change(in_lock->trx, sub_tree_change);
 
 	if (lock_get_mode(in_lock) == LOCK_AUTO_INC) {
 		dict_table_t*	table = in_lock->un_member.tab_lock.table;
@@ -2761,9 +2822,11 @@ lock_grant_and_move(
 {
     lock_grant(lock, false);
     HASH_DELETE(lock_t, hash, lock_hash, rec_fold, lock);
-    lock_t *next = (lock_t *) cell->node;
-    cell->node = lock;
-    lock->hash = next;
+    if (lock != cell->node) {
+        lock_t *next = (lock_t *) cell->node;
+        cell->node = lock;
+        lock->hash = next;
+    }
 }
 
 /*************************************************************//**
@@ -2833,13 +2896,13 @@ lock_rec_dequeue_from_page(
             }
             heap_no = lock_rec_find_set_bit(lock);
             if (lock_rec_get_nth_bit(in_lock, heap_no) &&
-                lock_has_to_wait(lock, in_lock)) {
+                !lock_rec_has_to_wait_granted(lock)) {
                 heap_nos.insert(heap_no);
                 if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S &&
                     read_chunks[heap_no].size() < CHUNK_SIZE) {
                     read_chunks[heap_no].push_back(lock);
                 } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X &&
-                           write_locks[heap_no] != NULL) {
+                           write_locks[heap_no] == NULL) {
                     write_locks[heap_no] = lock;
                 }
             }
@@ -2873,10 +2936,14 @@ lock_rec_dequeue_from_page(
             
             if (select_result == 1) {
                 for (auto lock : read_chunk) {
+                    lock->batch_scheduled = true;
+                }
+                for (auto lock : read_chunk) {
                     lock_grant_and_move(lock_hash, cell, lock, rec_fold);
                 }
-                
+
             } else if (select_result == -1) {
+                write_lock->batch_scheduled = true;
                 lock_grant_and_move(lock_hash, cell, write_lock, rec_fold);
             }
         }

@@ -129,6 +129,8 @@ struct lock_t {
 					LOCK_REC_NOT_GAP,
 					LOCK_INSERT_INTENTION,
 					wait flag, ORed */
+    
+    bool        batch_scheduled;
 
 	/** Determine if the lock object is a record lock.
 	@return true if record lock, false otherwise. */
