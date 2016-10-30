@@ -4798,10 +4798,15 @@ released:
         
         if (select_result == 1) {
             for (auto lock : read_chunk) {
-                lock_grant_and_move(lock_sys->rec_hash, cell, lock, rec_fold);
+                lock->batch_scheduled = true;
             }
+            for (auto lock : read_chunk) {
+                lock_grant_and_move(lock_hash, cell, lock, rec_fold);
+            }
+            
         } else if (select_result == -1) {
-            lock_grant_and_move(lock_sys->rec_hash, cell, write_lock, rec_fold);
+            write_lock->batch_scheduled = true;
+            lock_grant_and_move(lock_hash, cell, write_lock, rec_fold);
         }
     }
     
