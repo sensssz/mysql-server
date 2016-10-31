@@ -58,3 +58,5 @@ submit_lock_sys_change (
     ulint           space,      /* !< Space ID of the changed lock. */
     ulint           page_no,    /* !< Page number of the changed lock. */
     ulint           heap_no);   /* !< Heap number of the changed lock. */
+
+#endif

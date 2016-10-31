@@ -1616,7 +1616,7 @@ lock_queue_validate(
     while (next != NULL) {
         // If this is a granted lock, check that there's no wait lock before it.
         if (!lock_get_wait(next)) {
-            ut_ad(!wait_lock);
+            ut_a(!wait_lock);
         } else {
             wait_lock = true;
         }
@@ -2314,7 +2314,7 @@ lock_grant(
         trx_mutex_enter(in_lock->trx);
     }
     
-    for (lock = lock_rec_get_first(lock_hash_get(in_lock->type_mode), space, page_no, heap_no);
+    for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
          lock != NULL;
          lock = lock_rec_get_next(heap_no, lock)) {
         if (lock_get_wait(lock)
@@ -4424,7 +4424,6 @@ lock_rec_unlock(
 	lock_t*		first_lock;
 	lock_t*		lock;
 	ulint		heap_no;
-    ulint       rec_fold;
 	const char*	stmt;
 	size_t		stmt_len;
 
