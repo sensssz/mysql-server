@@ -1553,12 +1553,10 @@ lock_rec_fix_sub_tree_size(
 /*==========================*/
 	const lock_t*	in_lock)
 {
-	const lock_t*	lock;
+	lock_t*     lock;
 	ulint		space;
 	ulint		page_no;
 	ulint		heap_no;
-	ulint		bit_mask;
-	ulint		bit_offset;
     int         sub_tree_size_change = 0;
 	hash_table_t*	hash;
 
@@ -2297,7 +2295,6 @@ lock_grant(
 	ut_ad(lock_mutex_own());
     ut_ad(trx_mutex_own(in_lock->trx) == owns_trx_mutex);
     
-    bool        wait_lock;
     ulint       space;
     ulint       page_no;
     ulint       heap_no;
@@ -2644,8 +2641,6 @@ lock_rec_dequeue_from_page(
 {
 	ulint		space;
 	ulint		page_no;
-    ulint       heap_no;
-    ulint       rec_fold;
 	lock_t*		lock;
 	trx_lock_t*	trx_lock;
 	hash_table_t*	lock_hash;
@@ -2658,7 +2653,6 @@ lock_rec_dequeue_from_page(
 
 	space = in_lock->un_member.rec_lock.space;
 	page_no = in_lock->un_member.rec_lock.page_no;
-    rec_fold = lock_rec_fold(space, page_no);
 
 	ut_ad(in_lock->index->table->n_rec_locks > 0);
 	in_lock->index->table->n_rec_locks--;
