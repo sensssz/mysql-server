@@ -1829,21 +1829,6 @@ RecLock::lock_alloc(
 	return(lock);
 }
 
-static
-lock_t *
-lock_rec_get_first(
-    hash_table_t*   lock_hash,
-    ulint   space,
-    ulint   page_no,
-    ulint   heap_no)
-{
-    lock_t *lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
-    if (lock != NULL && !lock_rec_get_nth_bit(lock, heap_no)) {
-        lock = lock_rec_get_next(heap_no, lock);
-    }
-    return lock;
-}
-
 void
 update_trx_finish_time(
     trx_t*  trx,
