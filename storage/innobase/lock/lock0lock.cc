@@ -354,6 +354,7 @@ swap_locks_if_beneficial(
     rec_fold = lock_rec_fold(event.space, event.page_no);
     cell = hash_get_nth_cell(event.lock_hash, hash_calc_hash(rec_fold, event.lock_hash));
 
+    lock1_prev = lock2_prev = NULL;
     lock = lock_rec_get_first(event.lock_hash, event.space, event.page_no, event.heap_no);
     if (lock == cell->node) {
         lock1_prev = (lock_t **) &cell->node;
@@ -1880,8 +1881,8 @@ update_rec_release_time(
     triplet     rec;
     hash_table_t*   lock_hash;
     
-    space = lock->un_member.rec_lock.space;
-    page_no = lock->un_member.rec_lock.page_no;
+    space = in_lock->un_member.rec_lock.space;
+    page_no = in_lock->un_member.rec_lock.page_no;
     rec.space = space;
     rec.page_no = page_no;
     lock_hash = lock_hash_get(in_lock->type_mode);
@@ -2007,6 +2008,7 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
     page_no = lock->un_member.rec_lock.page_no;
     heap_no = lock_rec_find_set_bit(lock);
     lock_hash = lock_hash_get(m_mode);
+    last_wait_lock = NULL;
 
 	if (add_to_hash) {
 		ulint	key = m_rec_id.fold();
