@@ -221,7 +221,7 @@ handle_lock_sys_change_events(
     while (!thread_shutdown) {
         lock_sys_change_mutex_enter();
         while (lock_sys_change->event_queue.empty()) {
-            os_event_wait(lock_sys_change->cond);
+            pthread_cond_wait(&lock_sys_change->cond, &lock_sys_change->mutex);
         }
         lock_sys_change_event_t event = lock_sys_change->event_queue.front();
         lock_sys_change->event_queue.pop_front();
