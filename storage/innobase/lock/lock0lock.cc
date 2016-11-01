@@ -356,7 +356,7 @@ swap_locks_if_beneficial(
 
     lock = lock_rec_get_first(event.lock_hash, event.space, event.page_no, event.heap_no);
     if (lock == cell->node) {
-        lock1_prev = &cell->node;
+        lock1_prev = (locK_t **) &cell->node;
     }
     
     for (; lock != NULL;
