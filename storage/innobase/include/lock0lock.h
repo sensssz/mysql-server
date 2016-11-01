@@ -1002,7 +1002,32 @@ struct triplet {
     ulint   space;
     ulint   page_no;
     ulint   heap_no;
+    
+    bool operator==(const triplet& other) {
+        return space == other.space &&
+               page_no == other.page_no &&
+               heap_no == other.heap_no;
+    }
 };
+
+namespace std {
+
+  template <>
+  struct hash<triplet>
+  {
+    std::size_t operator()(const triplet& k) const
+      {
+          ulint x = k.space;
+          ulint y = k.page_no;
+          ulint z = k.heap_no;
+          int result = (int) (x ^ (x >>> 32));
+          result = 31 * result + (int) (y ^ (y >>> 32));
+          result = 31 * result + (int) (z ^ (z >>> 32));
+          return result;
+    }
+  };
+
+}
 
 extern std::unordered_map<triplet, int>    rec_release_time;
 

@@ -273,13 +273,11 @@ ib_uint64_t	DeadlockChecker::s_lock_mark_counter = 0;
 /** The stack used for deadlock searches. */
 DeadlockChecker::state_t	DeadlockChecker::s_states[MAX_STACK_SIZE];
 
-static
 void
 update_trx_finish_time(
     trx_t*  trx,
     long    delta);
 
-static
 void
 update_rec_release_time(
     lock_t* lock);
