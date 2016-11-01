@@ -1590,7 +1590,7 @@ handle_trx_sub_tree_change(
             && lock->un_member.rec_lock.space == space
             && lock->un_member.rec_lock.page_no == page_no
             && lock_has_to_wait(wait_lock, lock)) {
-            handle_trx_sub_tree_change(lock->trx, sub_tree_size_change);
+            handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
         }
     }
 }
@@ -1630,9 +1630,8 @@ lock_rec_fix_sub_tree_size(
             const byte*	p = (const byte*) &in_lock[1];
 
             if (heap_no < lock_rec_get_n_bits(lock)
-                && (p[bit_offset] & bit_mask)
-                && lock_has_to_wait(in_lock, lock)) {
-                handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size);
+                && (p[bit_offset] & bit_mask)) {
+                handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size + 1);
             }
         }
     } else {
@@ -1641,7 +1640,7 @@ lock_rec_fix_sub_tree_size(
              lock = lock_rec_get_next_on_page_const(lock)) {
             if (lock_get_wait(lock)
                 && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))) {
-                sub_tree_size_change += lock->trx->sub_tree_size;
+                sub_tree_size_change += lock->trx->sub_tree_size + 1;
             }
         }
         handle_trx_sub_tree_change(in_lock->trx, sub_tree_size_change);
@@ -2510,7 +2509,7 @@ lock_grant(
          lock = lock_rec_get_next(heap_no, lock)) {
         if (lock_get_wait(lock)
             && !lock->batch_scheduled) {
-            sub_tree_change += lock->trx->sub_tree_size;
+            sub_tree_change += lock->trx->sub_tree_size + 1;
         }
     }
     handle_trx_sub_tree_change(in_lock->trx, sub_tree_change);
@@ -2821,8 +2820,8 @@ lock_grant_and_move(
     ulint           rec_fold)
 {
     lock_grant(lock, false);
-    HASH_DELETE(lock_t, hash, lock_hash, rec_fold, lock);
     if (lock != cell->node) {
+        HASH_DELETE(lock_t, hash, lock_hash, rec_fold, lock);
         lock_t *next = (lock_t *) cell->node;
         cell->node = lock;
         lock->hash = next;
