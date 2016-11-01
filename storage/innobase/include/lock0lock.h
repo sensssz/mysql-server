@@ -1003,7 +1003,7 @@ struct triplet {
     ulint   page_no;
     ulint   heap_no;
     
-    bool operator==(const triplet& other) {
+    bool operator==(const triplet &other) const {
         return space == other.space &&
                page_no == other.page_no &&
                heap_no == other.heap_no;

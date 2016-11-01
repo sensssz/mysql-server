@@ -1597,7 +1597,8 @@ update_rec_release_time(
     rec.space = space;
     rec.page_no = page_no;
     lock_hash = lock_hash_get(in_lock->type_mode);
-    for (heap_no = 0; nbits = lock_rec_get_n_bits(in_lock); heap_no++) {
+    nbits = lock_rec_get_n_bits(in_lock);
+    for (heap_no = 0; heap_no < nbits; heap_no++) {
         if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
             continue;
         }
@@ -1675,10 +1676,10 @@ insert_and_find_last_wait_lock(
         return NULL;
     }
     last_wait_lock = NULL;
-    lock = cell->node;
+    lock = (lock_t *) cell->node;
     if (lock_get_wait(lock)
         && lock->un_member.rec_lock.space == space
-        && lock->un_member.rec_lock == page_no
+        && lock->un_member.rec_lock.page_no == page_no
         && lock_rec_get_nth_bit(lock, heap_no)) {
         last_wait_lock = lock;
     }
@@ -1736,7 +1737,7 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
         update_rec_release_time(lock);
     }
     
-	UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, in_lock);
+	UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, lock);
 }
 
 /**
@@ -2353,13 +2354,9 @@ lock_grant(
     ut_ad(trx_mutex_own(in_lock->trx) == owns_trx_mutex);
     
     lock_reset_lock_and_trx_wait(lock);
-    
-    if (!owns_trx_mutex) {
-        trx_mutex_enter(in_lock->trx);
-    }
 
     if (!owns_trx_mutex) {
-        trx_mutex_enter(in_lock->trx);
+        trx_mutex_enter(lock->trx);
     }
 
 	if (lock_get_mode(lock) == LOCK_AUTO_INC) {
@@ -2394,7 +2391,7 @@ lock_grant(
 	}
 
     if (!owns_trx_mutex) {
-        trx_mutex_exit(in_lock->trx);
+        trx_mutex_exit(lock->trx);
     }
 }
 
