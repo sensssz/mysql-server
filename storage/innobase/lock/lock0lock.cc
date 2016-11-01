@@ -118,9 +118,9 @@ namespace std {
 
 static std::unordered_map<triplet, int> rec_release_time;
 struct lock_sys_change_t {
-    EventQueue  event_queue;
-    LockMutex   mutex;
-    os_event_t  cond;
+    EventQueue      event_queue;
+    pthread_mutex_t mutex;
+    pthread_cond_t  cond;
 };
 static lock_sys_change_t  *lock_sys_change;
 static pthread_t swap_thread;
@@ -167,24 +167,24 @@ void
 update_rec_release_time(
     lock_t* lock);
 
-#define lock_sys_change_mutex_enter() mutex_enter(&lock_sys_change->mutex)
-#define lock_sys_change_mutex_exit() mutex_exit(&lock_sys_change->mutex)
+#define lock_sys_change_mutex_enter() pthread_mutex_lock(&lock_sys_change->mutex)
+#define lock_sys_change_mutex_exit() pthread_mutex_unlock(&lock_sys_change->mutex)
 
 static
 void
 lock_sys_change_create()
 {
     lock_sys_change = static_cast<lock_sys_change_t*>(ut_zalloc_nokey(sizeof(lock_sys_change_t)));
-    mutex_create(LATCH_ID_LOCK_CHANGE_SYS, &lock_sys_change->mutex);
-    lock_sys_change->cond = os_event_create(0);
+    pthread_mutex_init(&lock_sys_change->mutex, NULL);
+    pthread_cond_init(&lock_sys_change->cond, NULL);
 }
 
 static
 void
 lock_sys_change_stop()
 {
-    os_event_destroy(lock_sys_change->cond);
-    mutex_destroy(&lock_sys_change->mutex);
+    pthread_cond_destroy(&lock_sys_change->cond);
+    pthread_mutex_destroy(&lock_sys_change->mutex);
     lock_sys_change->event_queue.clear();
     lock_sys_change = NULL;
 }
@@ -206,7 +206,7 @@ void
 swap_thread_stop()
 {
     thread_shutdown = true;
-    os_event_set(lock_sys_change->cond);
+    pthread_cond_signal(&lock_sys_change->cond);
     pthread_join(swap_thread, NULL);
     lock_sys_change_stop();
 }
@@ -249,9 +249,7 @@ submit_lock_sys_change(
     event.heap_no = heap_no;
     lock_sys_change_mutex_enter();
     lock_sys_change->event_queue.push_back(std::move(event));
-    if (!os_event_is_set(lock_sys_change->cond)) {
-        os_event_set(lock_sys_change->cond);
-    }
+    pthread_cond_signal(&lock_sys_change->cond);
     lock_sys_change_mutex_exit();
 }
 
