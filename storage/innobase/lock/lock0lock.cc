@@ -1687,7 +1687,7 @@ insert_and_find_last_wait_lock(
         lock = lock->hash;
         if (lock_get_wait(lock)
             && lock->un_member.rec_lock.space == space
-            && lock->un_member.rec_lock == page_no
+            && lock->un_member.rec_lock.page_no == page_no
             && lock_rec_get_nth_bit(lock, heap_no)) {
             last_wait_lock = lock;
         }
@@ -2351,7 +2351,7 @@ lock_grant(
     bool    owns_trx_mutex)    /*!< in: whether lock->trx->mutex is owned */
 {
 	ut_ad(lock_mutex_own());
-    ut_ad(trx_mutex_own(in_lock->trx) == owns_trx_mutex);
+    ut_ad(trx_mutex_own(lock->trx) == owns_trx_mutex);
     
     lock_reset_lock_and_trx_wait(lock);
 
@@ -2360,7 +2360,7 @@ lock_grant(
     }
 
 	if (lock_get_mode(lock) == LOCK_AUTO_INC) {
-		dict_table_t*	table = in_lock->un_member.tab_lock.table;
+		dict_table_t*	table = lock->un_member.tab_lock.table;
 
 		if (table->autoinc_trx == lock->trx) {
 			ib::error() << "Transaction already had an"
