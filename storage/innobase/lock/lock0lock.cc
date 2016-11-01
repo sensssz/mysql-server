@@ -2380,7 +2380,7 @@ lock_grant(
 	TRX_QUE_LOCK_WAIT state, and there is no need to end the lock wait
 	for it */
 
-	if (in_lock->trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
+	if (lock->trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
 		que_thr_t*	thr;
 
 		thr = que_thr_end_lock_wait(lock->trx);
