@@ -135,7 +135,8 @@ handle_lock_sys_change_events(
         while (lock_sys_change->event_queue.empty()) {
             os_event_wait(lock_sys_change->cond);
         }
-        lock_sys_change_event_t event = lock_sys_change->event_queue.pop_front();
+        lock_sys_change_event_t event = lock_sys_change->event_queue.front();
+        lock_sys_change->event_queue.pop_front();
         lock_sys_change_mutex_exit();
         process_lock_sys_change_event(event);
     }
