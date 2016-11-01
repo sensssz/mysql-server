@@ -2026,7 +2026,11 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 
 	ut_ad(lock_get_wait(lock));
 
-	dberr_t	err = deadlock_check(lock);
+    dberr_t	err = deadlock_check(lock);
+    
+    if (err == DB_DEADLOCK || err == DB_SUCCESS_LOCKED_REC) {
+        TraceTool::get_instance()->total_locks++;
+    }
 
 	ut_ad(trx_mutex_own(m_trx));
     
