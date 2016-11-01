@@ -144,6 +144,11 @@ handle_lock_sys_change_events(
     void* args);
 
 static
+void
+process_lock_sys_change_event(
+    lock_sys_change_event_t event);
+
+static
 bool
 swap_locks_if_beneficial(
     lock_sys_change_event_t event,
@@ -169,7 +174,7 @@ void
 lock_sys_change_create()
 {
     lock_sys_change = static_cast<lock_sys_change_t*>(ut_zalloc_nokey(sizeof(lock_sys_change_t)));
-    mutex_create(LATCH_ID_lock_sys_change, &lock_sys_change->mutex);
+    mutex_create(LATCH_ID_LOCK_CHANGE_SYS, &lock_sys_change->mutex);
     lock_sys_change->cond = os_event_create(0);
 }
 
@@ -265,7 +270,6 @@ lock_rec_get_first(
     }
     return lock;
 }
-
 
 static
 void
