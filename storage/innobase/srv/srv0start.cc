@@ -105,7 +105,6 @@ Created 2/16/1996 Heikki Tuuri
 # include "zlib.h"
 # include "ut0crc32.h"
 # include "ut0new.h"
-#include "lock0swap.h"
 
 #ifdef HAVE_LZO1X
 #include <lzo/lzo1x.h>
