@@ -1010,25 +1010,6 @@ struct triplet {
     }
 };
 
-namespace std {
-
-  template <>
-  struct hash<triplet>
-  {
-    std::size_t operator()(const triplet& k) const
-      {
-          ulint x = k.space;
-          ulint y = k.page_no;
-          ulint z = k.heap_no;
-          int result = (int) (x ^ (x >>> 32));
-          result = 31 * result + (int) (y ^ (y >>> 32));
-          result = 31 * result + (int) (z ^ (z >>> 32));
-          return result;
-    }
-  };
-
-}
-
 extern std::unordered_map<triplet, int>    rec_release_time;
 
 typedef ib_mutex_t LockMutex;
