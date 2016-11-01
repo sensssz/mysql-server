@@ -1259,7 +1259,8 @@ struct trx_t {
 					error, or empty. */
 	FlushObserver*	flush_observer;	/*!< flush observer */
     
-    lint        sub_tree_size;
+    long        sub_tree_size;
+    long        finish_time;
 
 #ifdef UNIV_DEBUG
 	bool		is_dd_trx;	/*!< True if the transaction is used for

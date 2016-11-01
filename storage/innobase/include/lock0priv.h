@@ -130,7 +130,7 @@ struct lock_t {
 					LOCK_INSERT_INTENTION,
 					wait flag, ORed */
     
-    bool        batch_scheduled;
+    long        release_time;
 
 	/** Determine if the lock object is a record lock.
 	@return true if record lock, false otherwise. */

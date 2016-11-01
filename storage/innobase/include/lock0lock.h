@@ -996,6 +996,14 @@ struct lock_op_t{
 	lock_mode	mode;	/*!< lock mode */
 };
 
+struct triplet {
+    ulint   space;
+    ulint   page_no;
+    ulint   heap_no;
+};
+
+extern std::unordered_map<triplet, int>    rec_release_time;
+
 typedef ib_mutex_t LockMutex;
 
 /** The lock system struct */
@@ -1081,6 +1089,15 @@ lock_rec_trx_wait(
 	lock_t*		lock,
 	ulint		i,
 	ulint		type);
+
+void
+update_trx_finish_time(
+    trx_t*  trx,
+    long    delta);
+
+void
+update_rec_release_time(
+    lock_t* in_lock);
 
 /** The lock system */
 extern lock_sys_t*	lock_sys;
