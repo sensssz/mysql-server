@@ -207,7 +207,7 @@ swap_thread_stop()
 {
     thread_shutdown = true;
     os_event_set(lock_sys_change->cond);
-    pthread_join(&swap_thread, NULL);
+    pthread_join(swap_thread, NULL);
     lock_sys_change_stop();
 }
 
