@@ -52,6 +52,7 @@ Created 5/7/1996 Heikki Tuuri
 #include "pars0pars.h"
 
 #include <deque>
+#include <pthread.h>
 #include <set>
 #include <unordered_map>
 #include <vector>
@@ -122,7 +123,7 @@ struct lock_sys_change_t {
     os_event_t  cond;
 };
 static lock_sys_change_t  *lock_sys_change;
-static my_thread_handle swap_thread;
+static pthread_t swap_thread;
 static bool thread_shutdown;
 
 /*********************************************************************//**
@@ -195,7 +196,7 @@ swap_thread_start()
 {
     thread_shutdown = false;
     lock_sys_change_create();
-    my_thread_create(&swap_thread, NULL, handle_lock_sys_change_events, NULL);
+    pthread_create(&swap_thread, NULL, handle_lock_sys_change_events, NULL);
 }
 
 
@@ -206,7 +207,7 @@ swap_thread_stop()
 {
     thread_shutdown = true;
     os_event_set(lock_sys_change->cond);
-    my_thread_join(&swap_thread, NULL);
+    pthread_join(&swap_thread, NULL);
     lock_sys_change_stop();
 }
 
@@ -217,8 +218,6 @@ void*
 handle_lock_sys_change_events(
     void* args)
 {
-    my_thread_init();
-    
     while (!thread_shutdown) {
         lock_sys_change_mutex_enter();
         while (lock_sys_change->event_queue.empty()) {
