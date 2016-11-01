@@ -998,20 +998,6 @@ struct lock_op_t{
 	lock_mode	mode;	/*!< lock mode */
 };
 
-struct triplet {
-    ulint   space;
-    ulint   page_no;
-    ulint   heap_no;
-    
-    bool operator==(const triplet &other) const {
-        return space == other.space &&
-               page_no == other.page_no &&
-               heap_no == other.heap_no;
-    }
-};
-
-extern std::unordered_map<triplet, int>    rec_release_time;
-
 typedef ib_mutex_t LockMutex;
 
 /** The lock system struct */
@@ -1098,15 +1084,6 @@ lock_rec_trx_wait(
 	ulint		i,
 	ulint		type);
 
-void
-update_trx_finish_time(
-    trx_t*  trx,
-    long    delta);
-
-void
-update_rec_release_time(
-    lock_t* in_lock);
-
 /** The lock system */
 extern lock_sys_t*	lock_sys;
 
@@ -1139,6 +1116,17 @@ extern lock_sys_t*	lock_sys;
 #define lock_wait_mutex_exit() do {		\
 	lock_sys->wait_mutex.exit();		\
 } while (0)
+
+
+/*********************************************************************//**
+Start the swap background thread. */
+void
+swap_thread_start();
+
+/*********************************************************************//**
+Stop the swap background thread. */
+void
+swap_thread_stop();
 
 #ifndef UNIV_NONINL
 #include "lock0lock.ic"
