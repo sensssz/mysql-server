@@ -292,7 +292,7 @@ process_lock_sys_change_event(
     }
     index = locks_on_rec.size() - 2;
     num_swaps = 0;
-    for (index >= 0) {
+    while (index >= 0) {
         if (num_swaps == NUM_SWAPS) {
             break;
         }
@@ -303,6 +303,7 @@ process_lock_sys_change_event(
             locks_on_rec[index + 1] = lock1;
             ++num_swaps;
         }
+        --index;
     }
     trx_sys_mutex_exit();
     lock_mutex_exit();
