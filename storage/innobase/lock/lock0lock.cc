@@ -1861,7 +1861,8 @@ find_max_trx_finish_time(
     for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
          lock != NULL;
          lock = lock_rec_get_next(rec.heap_no, lock)) {
-        if (lock->trx->finish_time > max_finish_time) {
+        if (!lock_get_wait(lock)
+            && lock->trx->finish_time > max_finish_time) {
             max_finish_time = lock->trx->finish_time;
         }
     }
@@ -2041,9 +2042,11 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 		++lock->index->table->n_rec_locks;
         
-        HASH_INSERT(lock_t, hash, lock_hash_get(m_mode), key, lock);
+        ulint wait_lock = insert_and_find_last_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
         
         last_wait_lock = find_prev_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
+        
+        ut_ad(wait_lock == last_wait_lock);
     }
     
     if (wait_lock) {
