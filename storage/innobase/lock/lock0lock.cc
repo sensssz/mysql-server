@@ -1571,11 +1571,11 @@ handle_trx_sub_tree_change(
     hash_table_t*	hash;
     
     trx->sub_tree_size += sub_tree_size_change;
-    wait_lock = trx->lock.wait_lock;
-    if (wait_lock == NULL) {
+    if (trx->state != TRX_QUE_LOCK_WAIT) {
         return;
     }
     // Is waiting for other transactions
+    wait_lock = trx->lock.wait_lock;
     space = wait_lock->un_member.rec_lock.space;
     page_no = wait_lock->un_member.rec_lock.page_no;
     heap_no = lock_rec_find_set_bit(wait_lock);
@@ -1588,8 +1588,7 @@ handle_trx_sub_tree_change(
          lock = lock_rec_get_next(heap_no, lock)) {
         if (!lock_get_wait(lock)
             && lock->un_member.rec_lock.space == space
-            && lock->un_member.rec_lock.page_no == page_no
-            && lock_has_to_wait(wait_lock, lock)) {
+            && lock->un_member.rec_lock.page_no == page_no) {
             handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
         }
     }
@@ -1620,17 +1619,13 @@ lock_rec_fix_sub_tree_size(
     
     if (lock_get_wait(in_lock)) {
         heap_no = lock_rec_find_set_bit(in_lock);
-        bit_offset = heap_no / 8;
-        bit_mask = static_cast<ulint>(1 << (heap_no % 8));
         
         for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
-             lock != NULL && !lock_get_wait(lock);
+             lock != NULL;
              lock = lock_rec_get_next_on_page_const(lock)) {
 
-            const byte*	p = (const byte*) &in_lock[1];
-
-            if (heap_no < lock_rec_get_n_bits(lock)
-                && (p[bit_offset] & bit_mask)) {
+            if (lock_rec_get_nth_bit(lock, heap_no)
+                && !lock_get_wait(lock)) {
                 handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size + 1);
             }
         }
