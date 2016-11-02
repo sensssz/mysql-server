@@ -1962,6 +1962,7 @@ insert_and_find_last_wait_lock(
     lock_t*         lock;
     hash_cell_t*    cell;
     
+    in_lock->hash = NULL;
     last_wait_lock = NULL;
     rec_fold = lock_rec_fold(space, page_no);
     cell = hash_get_nth_cell(lock_hash, hash_calc_hash(rec_fold, lock_hash));
@@ -2051,6 +2052,8 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
         ut_ad(wait_lock == last_wait_lock);
     }
     
+    UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, lock);
+    
     if (wait_lock) {
         lock_set_lock_and_trx_wait(lock, lock->trx);
         if (add_to_hash &&
@@ -2061,7 +2064,6 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
         update_rec_release_time(lock);
     }
     
-	UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, lock);
 }
 
 /**
