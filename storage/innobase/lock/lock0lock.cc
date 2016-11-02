@@ -1986,6 +1986,32 @@ insert_and_find_last_wait_lock(
     return last_wait_lock;
 }
 
+static
+lock_t*
+find_prev_wait_lock(
+    hash_table_t*   lock_hash,
+    lock_t*         in_lock,
+    ulint           space,
+    ulint           page_no,
+    ulint           heap_no,
+    ulint           rec_fold)
+{
+    lock_t* prev_wait_lock;
+    lock_t*         lock;
+    hash_cell_t*    cell;
+    
+    prev_wait_lock = NULL;
+    for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
+         lock != in_lock;
+         lock = lock_rec_get_next(heap_no, lock)) {
+        if (lock_get_wait(lock)) {
+            prev_wait_lock = lock;
+        }
+    }
+    
+    return prev_wait_lock;
+}
+
 
 /**
 Add the lock to the record lock hash and the transaction's lock list
@@ -2016,7 +2042,8 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 		++lock->index->table->n_rec_locks;
         
-        last_wait_lock = insert_and_find_last_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
+        HASH_INSERT(lock_t, hash, lock_hash, key, lock);
+        last_wait_lock = find_prev_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
     }
     
     if (wait_lock) {
