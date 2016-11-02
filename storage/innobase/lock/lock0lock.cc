@@ -2041,7 +2041,9 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 		++lock->index->table->n_rec_locks;
         
-        last_wait_lock = insert_and_find_last_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
+        HASH_INSERT(lock_t, hash, lock_hash_get(m_mode), key, lock);
+        
+        last_wait_lock = find_prev_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
     }
     
     if (wait_lock) {
