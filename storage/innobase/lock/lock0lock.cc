@@ -1955,13 +1955,13 @@ insert_and_find_last_wait_lock(
     lock_t*         lock;
     hash_cell_t*    cell;
     
+    last_wait_lock = NULL;
     rec_fold = lock_rec_fold(space, page_no);
     cell = hash_get_nth_cell(lock_hash, hash_calc_hash(rec_fold, lock_hash));
     if (cell->node == NULL) {
         cell->node = in_lock;
         return NULL;
     }
-    last_wait_lock = NULL;
     lock = (lock_t *) cell->node;
     if (lock_get_wait(lock)
         && lock->un_member.rec_lock.space == space
