@@ -1998,7 +1998,6 @@ find_prev_wait_lock(
 {
     lock_t* prev_wait_lock;
     lock_t*         lock;
-    hash_cell_t*    cell;
     
     prev_wait_lock = NULL;
     for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
@@ -2042,16 +2041,16 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 		++lock->index->table->n_rec_locks;
         
-        HASH_INSERT(lock_t, hash, lock_hash, key, lock);
-        last_wait_lock = find_prev_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
+        last_wait_lock = insert_and_find_last_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
     }
     
     if (wait_lock) {
         lock_set_lock_and_trx_wait(lock, lock->trx);
-        if (last_wait_lock != NULL) {
+        if (add_to_hash &&
+            last_wait_lock != NULL) {
             update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time);
         }
-    } else {
+    } else if (add_to_hash) {
         update_rec_release_time(lock);
     }
     
@@ -2266,7 +2265,9 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	lock_t*	lock = create(m_trx, true, !high_priority, prdt);
 
 	/* Attempt to jump over the low priority waiting locks. */
-	if (high_priority && jump_queue(lock, wait_for)) {
+    if (high_priority && jump_queue(lock, wait_for)) {
+        
+        update_rec_release_time(lock);
 
         /* Lock is granted */
 		return(DB_SUCCESS);
