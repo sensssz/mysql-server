@@ -2045,11 +2045,7 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 		++lock->index->table->n_rec_locks;
         
-        lock_t* wait_lock = insert_and_find_last_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
-        
-        last_wait_lock = find_prev_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
-        
-        ut_ad(wait_lock == last_wait_lock);
+        last_wait_lock = insert_and_find_last_wait_lock(lock_hash, lock, space, page_no, heap_no, key);
     }
     
     UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, lock);
