@@ -257,7 +257,6 @@ submit_lock_sys_change(
     ulint           page_no,    /* !< Page number of the changed lock. */
     ulint           heap_no)    /* !< Heap number of the changed lock. */
 {
-    return;
     if (!thread_started) {
         return;
     }
@@ -1868,7 +1867,6 @@ update_trx_finish_time(
     trx_t*  trx,
     long    delta)
 {
-    return;
     lock_t*     lock;
     
     trx->finish_time += delta;
@@ -1889,7 +1887,6 @@ update_trx_finish_time(
     lock_t* lock,
     long    delta)
 {
-    return;
     trx_t*  trx;
     
     if (lock_get_mode(lock) == LOCK_S) {
@@ -1932,7 +1929,6 @@ void
 update_rec_release_time(
     lock_t* in_lock)
 {
-    return;
     lock_t*     lock;
     ulint       space;
     ulint       page_no;
