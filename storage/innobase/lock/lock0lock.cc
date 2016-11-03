@@ -1957,7 +1957,7 @@ update_rec_release_time(
         rec_release_time[rec] = new_release_time;
         if (release_time != new_release_time
             && new_release_time != 0) {
-            fprintf(stderr, "rec (%lu, %lu, %lu) increases by %ld\n", space, page_no, heap_no, delta);
+            fprintf(stderr, "rec (%lu, %lu, %lu) increases by %ld\n", space, page_no, heap_no, new_release_time - release_time);
             for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
                  lock != NULL;
                  lock = lock_rec_get_next(rec.heap_no, lock)) {
