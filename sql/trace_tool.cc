@@ -109,7 +109,6 @@ bool TRACE_END(int index)
 #ifdef MONITOR
   if (TraceTool::should_monitor())
   {
-    fprintf(stderr, "Monitoring...\n");
     clock_gettime(CLOCK_REALTIME, &call_end);
     long duration = TraceTool::difftime(call_start, call_end);
     TraceTool::get_instance()->add_record(index, duration);
@@ -360,10 +359,6 @@ void TraceTool::add_record(int function_index, long duration)
 
 void TraceTool::write_latency(string dir)
 {
-  if (transaction_start_times.size() < 200) {
-    function_times.clear();
-    return;
-  }
   ofstream tpcc_log;
   ofstream new_order_log;
   ofstream payment_log;
