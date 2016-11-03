@@ -300,6 +300,8 @@ process_lock_sys_change_event(
     std::vector<lock_t*>    read_locks_on_rec;
     std::vector<lock_t*>    locks_on_rec;
     
+    fprintf(stderr, "Processing event (%lu, %lu, %lu)\n", event.space, event.page_no, event.heap_no);
+    
     has_seen_read_lock = false;
     lock_mutex_enter();
     trx_sys_mutex_enter();
