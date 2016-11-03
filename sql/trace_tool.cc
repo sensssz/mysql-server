@@ -12,7 +12,7 @@
 
 #define NUM_CORES 2
 #define TARGET_PATH_COUNT 42
-#define NUMBER_OF_FUNCTIONS 2
+#define NUMBER_OF_FUNCTIONS 3
 #define LATENCY
 #define MONITOR
 

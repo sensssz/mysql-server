@@ -241,7 +241,9 @@ handle_lock_sys_change_events(
         lock_sys_change_event_t event = lock_sys_change->event_queue.front();
         lock_sys_change->event_queue.pop_front();
         lock_sys_change_mutex_exit();
+        TRACE_START();
         process_lock_sys_change_event(event);
+        TRACE_END(3);
     }
     
     return NULL;
