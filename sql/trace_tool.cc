@@ -98,6 +98,7 @@ bool TRACE_START()
 #ifdef MONITOR
   if (TraceTool::should_monitor())
   {
+    fprintf(stderr, "Monitoring...");
     clock_gettime(CLOCK_REALTIME, &call_start);
   }
 #endif

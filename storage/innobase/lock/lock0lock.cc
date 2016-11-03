@@ -2280,7 +2280,7 @@ queue is itself waiting roll it back, also do a deadlock check and resolve.
 dberr_t
 RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 {
-    TraceTool::get_instance()->path_count = 42;
+    TraceTool::path_count = 42;
     TRACE_START();
     lock_t* last_wait_lock = NULL;
     ulint   space;
@@ -2318,7 +2318,7 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 
         /* Lock is granted */
         TRACE_END(1);
-        TraceTool::get_instance()->path_count = 0;
+        TraceTool::path_count = 0;
 		return(DB_SUCCESS);
 	}
 
@@ -2349,7 +2349,7 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 		thd_report_row_lock_wait(current_thd, wait_for->trx->mysql_thd);
     }
     TRACE_END(1);
-    TraceTool::get_instance()->path_count = 0;
+    TraceTool::path_count = 0;
 	return(err);
 }
 
@@ -3056,7 +3056,7 @@ lock_rec_dequeue_from_page(
 					get their lock requests granted,
 					if they are now qualified to it */
 {
-    TraceTool::get_instance()->path_count = 42;
+    TraceTool::path_count = 42;
     TRACE_START();
 	ulint		space;
 	ulint		page_no;
@@ -3163,7 +3163,7 @@ lock_rec_dequeue_from_page(
     
     update_rec_release_time(in_lock);
     TRACE_END(2);
-    TraceTool::get_instance()->path_count = 0;
+    TraceTool::path_count = 0;
 }
 
 /*************************************************************//**
