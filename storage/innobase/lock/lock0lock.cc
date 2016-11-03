@@ -153,6 +153,7 @@ static
 bool
 swap_locks_if_beneficial(
     lock_sys_change_event_t event,
+    std::vector<lock_t*> &read_locks,
     lock_t* lock1,
     lock_t* lock2);
 
@@ -282,29 +283,40 @@ process_lock_sys_change_event(
     lock_t*     lock;
     lock_t*     lock1;
     lock_t*     lock2;
+    bool        has_seen_read_lock;
+    std::vector<lock_t*>    read_locks_on_rec;
     std::vector<lock_t*>    locks_on_rec;
     
+    has_seen_read_lock = false;
     lock_mutex_enter();
     trx_sys_mutex_enter();
     for (lock = lock_rec_get_first(event.lock_hash, event.space, event.page_no, event.heap_no);
          lock != NULL;
          lock = lock_rec_get_next(event.heap_no, lock)) {
-        locks_on_rec.push_back(lock);
+        if (has_seen_read_lock
+            && lock_get_mode(lock) == LOCK_S) {
+            read_locks_on_rec.push_back(lock);
+        } else {
+            locks_on_rec.push_back(lock);
+            has_seen_read_lock = has_seen_read_lock || lock_get_mode(lock) == LOCK_S;
+        }
     }
-    index = locks_on_rec.size() - 2;
-    num_swaps = 0;
-    while (index >= 0) {
-        if (num_swaps == NUM_SWAPS) {
-            break;
+    if (locks_on_rec.size() > NUM_SWAPS) {
+        index = locks_on_rec.size() - 2;
+        num_swaps = 0;
+        while (index >= 0) {
+            if (num_swaps == NUM_SWAPS) {
+                break;
+            }
+            lock1 = locks_on_rec[index];
+            lock2 = locks_on_rec[index + 1];
+            if (swap_locks_if_beneficial(event, read_locks_on_rec, lock1, lock2)) {
+                locks_on_rec[index] = lock2;
+                locks_on_rec[index + 1] = lock1;
+                ++num_swaps;
+            }
+            --index;
         }
-        lock1 = locks_on_rec[index];
-        lock2 = locks_on_rec[index + 1];
-        if (swap_locks_if_beneficial(event, lock1, lock2)) {
-            locks_on_rec[index] = lock2;
-            locks_on_rec[index + 1] = lock1;
-            ++num_swaps;
-        }
-        --index;
     }
     trx_sys_mutex_exit();
     lock_mutex_exit();
@@ -335,6 +347,7 @@ static
 bool
 swap_locks_if_beneficial(
     lock_sys_change_event_t event,
+    std::vector<lock_t*> &read_locks,
     lock_t* lock1,
     lock_t* lock2)
 {
@@ -384,8 +397,8 @@ swap_locks_if_beneficial(
         *lock2_prev = lock1;
     }
     
-    update_trx_finish_time(lock1->trx, 1);
-    update_trx_finish_time(lock2->trx, -1);
+    update_trx_finish_time(read_locks, lock1, 1);
+    update_trx_finish_time(read_locks, lock2, -1);
     
     new_release_time = total_release_time();
     if (new_release_time < original_release_time) {
@@ -403,8 +416,8 @@ swap_locks_if_beneficial(
         *lock2_prev = lock2;
     }
     
-    update_trx_finish_time(lock1->trx, -1);
-    update_trx_finish_time(lock2->trx, 1);
+    update_trx_finish_time(read_locks, lock1, -1);
+    update_trx_finish_time(read_locks, lock2, 1);
 
     return false;
 }
@@ -1554,9 +1567,14 @@ lock_rec_other_has_conflicting(
 	     lock != NULL;
 	     lock = lock_rec_get_next_const(heap_no, lock)) {
 
+        /*
 		if (lock_rec_has_to_wait(trx, mode, lock, is_supremum)) {
 			return(lock);
 		}
+         */
+        if (!lock_get_wait(lock)) {
+            return lock;
+        }
 	}
 
 	return(NULL);
@@ -1849,6 +1867,28 @@ update_trx_finish_time(
     }
 }
 
+void
+update_trx_finish_time(
+    std::vector<lock_t*> &read_locks,
+    lock_t* lock,
+    long    delta)
+{
+    trx_t*  trx;
+    
+    if (lock_get_mode(lock) == LOCK_S) {
+        read_locks.push_back(lock);
+        for (auto read_lock : read_locks) {
+            trx = read_locks->trx;
+            update_trx_finish_time(trx, delta);
+        }
+        read_locks.pop_back(lock);
+    } else {
+        trx = lock->trx;
+        update_trx_finish_time(trx, delta);
+    }
+}
+
+
 static
 long
 find_max_trx_finish_time(
@@ -1960,10 +2000,12 @@ insert_and_find_last_wait_lock(
 {
     lock_t*         last_wait_lock;
     lock_t*         lock;
+    bool            is_read_lock;
     hash_cell_t*    cell;
     
     in_lock->hash = NULL;
     last_wait_lock = NULL;
+    is_read_lock = lock_get_mode(in_lock) == LOCK_S;
     rec_fold = lock_rec_fold(space, page_no);
     cell = hash_get_nth_cell(lock_hash, hash_calc_hash(rec_fold, lock_hash));
     if (cell->node == NULL) {
@@ -1983,7 +2025,13 @@ insert_and_find_last_wait_lock(
             && lock->un_member.rec_lock.space == space
             && lock->un_member.rec_lock.page_no == page_no
             && lock_rec_get_nth_bit(lock, heap_no)) {
-            last_wait_lock = lock;
+            if (lock_get_mode(lock) == LOCK_S) {
+                last_wait_lock = lock;
+            } else if (!is_read_lock
+                    || last_wait_lock == NULL
+                    || lock_get_mode(last_wait_lock) != LOCK_S) {
+                last_wait_lock = lock;
+            }
         }
     }
     lock->hash = in_lock;
@@ -2054,11 +2102,17 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
         lock_set_lock_and_trx_wait(lock, lock->trx);
         if (add_to_hash &&
             last_wait_lock != NULL) {
-            update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time);
+            if (lock_get_mode(lock) == LOCK_S
+                && lock_get_mode(last_wait_lock) == LOCK_S) {
+                update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time - lock->trx->finish_time);
+            } else {
+                update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time);
+            }
         }
     } else if (add_to_hash) {
         update_rec_release_time(lock);
     }
+    submit_lock_sys_change(lock_hash, space, page_no, heap_no);
     
 }
 
@@ -2996,9 +3050,13 @@ lock_rec_dequeue_from_page(
 {
 	ulint		space;
 	ulint		page_no;
+    ulint       nbits;
 	lock_t*		lock;
+    bool        has_granted_locks;
+    bool        is_read;
+    triplet     rec;
 	trx_lock_t*	trx_lock;
-	hash_table_t*	lock_hash;
+    hash_table_t*	lock_hash;
 
 	ut_ad(lock_mutex_own());
 	ut_ad(lock_get_type_low(in_lock) == LOCK_REC);
@@ -3008,6 +3066,9 @@ lock_rec_dequeue_from_page(
 
 	space = in_lock->un_member.rec_lock.space;
 	page_no = in_lock->un_member.rec_lock.page_no;
+    nbits = lock_rec_get_n_bits(in_lock);
+    rec.space = space;
+    rec.page_no = page_no;
 
 	ut_ad(in_lock->index->table->n_rec_locks > 0);
 	in_lock->index->table->n_rec_locks--;
@@ -3022,19 +3083,75 @@ lock_rec_dequeue_from_page(
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
     MONITOR_DEC(MONITOR_NUM_RECLOCK);
     
+//    for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
+//                                                page_no);
+//         lock != NULL;
+//         lock = lock_rec_get_next_on_page(lock)) {
+//        
+//        if (lock_get_wait(lock)
+//            && !lock_rec_has_to_wait_in_queue(lock)) {
+//            
+//            /* Grant the lock */
+//            ut_ad(lock->trx != in_lock->trx);
+//            lock_grant(lock, false);
+//        }
+//    }
+    
+    std::vector<lock_t *> locks_to_grant;
+    for (ulint heap_no = 0; heap_no < nbits; ++heap_no) {
+        if (!lock_rec_get_nth_bit(lock, heap_no)) {
+            continue;
+        }
+        has_granted_locks = false;
+        is_read = false;
+        for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
+             lock != NULL;
+             lock = lock_rec_get_next(heap_no, lock)) {
+            if (!lock_get_wait(lock)) {
+                has_granted_locks = true;
+                break;
+            } else {
+                if (locks_to_grant.size() == 0) {
+                    locks_to_grant.push_back(lock);
+                    is_read = lock_get_mode(lock) == LOCK_S;
+                } else if (is_read && lock_get_mode(lock) == LOCK_S) {
+                    locks_to_grant.push_back(lock);
+                }
+            }
+        }
+        if (has_granted_locks) {
+            locks_to_grant.clear();
+            continue;
+        }
+        rec.heap_no = heap_no;
+        if (locks_to_grant.size() > 0) {
+            for (auto lock : locks_to_grant) {
+                lock_grant(lock, false);
+            }
+            rec_release_time[rec] = 1;
+            submit_lock_sys_change(lock_hash, space, page_no, heap_no);
+        } else {
+            rec_release_time[rec] = 0;
+        }
+        
+        locks_to_grant.clear();
+    }
+    
     for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
                                                 page_no);
          lock != NULL;
          lock = lock_rec_get_next_on_page(lock)) {
-        
+
         if (lock_get_wait(lock)
             && !lock_rec_has_to_wait_in_queue(lock)) {
-            
+
             /* Grant the lock */
             ut_ad(lock->trx != in_lock->trx);
             lock_grant(lock, false);
         }
     }
+    
+    update_rec_release_time(in_lock);
 }
 
 /*************************************************************//**
@@ -4897,6 +5014,7 @@ lock_release(
 	ut_ad(!trx_mutex_own(trx));
 	ut_ad(!trx->is_dd_trx);
 
+    trx->finish_time = 0;
 	for (lock = UT_LIST_GET_LAST(trx->lock.trx_locks);
 	     lock != NULL;
 	     lock = UT_LIST_GET_LAST(trx->lock.trx_locks)) {
