@@ -98,7 +98,6 @@ bool TRACE_START()
 #ifdef MONITOR
   if (TraceTool::should_monitor())
   {
-    fprintf(stderr, "Monitoring...");
     clock_gettime(CLOCK_REALTIME, &call_start);
   }
 #endif
@@ -110,6 +109,7 @@ bool TRACE_END(int index)
 #ifdef MONITOR
   if (TraceTool::should_monitor())
   {
+    fprintf(stderr, "Monitoring...\n");
     clock_gettime(CLOCK_REALTIME, &call_end);
     long duration = TraceTool::difftime(call_start, call_end);
     TraceTool::get_instance()->add_record(index, duration);
