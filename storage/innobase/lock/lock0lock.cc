@@ -2070,7 +2070,6 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
     ulint   space;
     ulint   page_no;
     ulint   heap_no;
-    lock_t* last_wait_lock;
     hash_table_t*   lock_hash;
     
     wait_lock = m_mode & LOCK_WAIT;
@@ -2092,15 +2091,6 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
     
     if (wait_lock) {
         lock_set_lock_and_trx_wait(lock, lock->trx);
-        if (add_to_hash &&
-            last_wait_lock != NULL) {
-            if (lock_get_mode(lock) == LOCK_S
-                && lock_get_mode(last_wait_lock) == LOCK_S) {
-                update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time - lock->trx->finish_time);
-            } else {
-                update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time);
-            }
-        }
     } else if (add_to_hash) {
         update_rec_release_time(lock);
     }
@@ -2298,6 +2288,8 @@ queue is itself waiting roll it back, also do a deadlock check and resolve.
 dberr_t
 RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 {
+    lock_t* last_wait_lock = NULL;
+    
 	ut_ad(lock_mutex_own());
 	ut_ad(m_trx == thr_get_trx(m_thr));
 	ut_ad(trx_mutex_own(m_trx));
@@ -2327,6 +2319,16 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	ut_ad(lock_get_wait(lock));
 
 	dberr_t	err = deadlock_check(lock);
+    
+    if (err != DB_DEADLOCK
+        && last_wait_lock != NULL) {
+        if (lock_get_mode(lock) == LOCK_S
+            && lock_get_mode(last_wait_lock) == LOCK_S) {
+            update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time - lock->trx->finish_time);
+        } else {
+            update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time);
+        }
+    }
 
 	ut_ad(trx_mutex_own(m_trx));
 

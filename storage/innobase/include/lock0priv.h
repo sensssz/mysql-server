@@ -945,6 +945,8 @@ private:
 	/**
 	The record lock tuple {space, page_no, heap_no} */
 	RecID			m_rec_id;
+    
+    lock_t*         last_wait_lock;
 };
 
 #ifdef UNIV_DEBUG
