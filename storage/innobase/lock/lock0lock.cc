@@ -163,6 +163,12 @@ update_trx_finish_time(
     trx_t*  trx,
     long    delta);
 
+void
+update_trx_finish_time(
+    std::vector<lock_t*> &read_locks,
+    lock_t* lock,
+    long    delta);
+
 static
 void
 update_rec_release_time(
@@ -1878,7 +1884,7 @@ update_trx_finish_time(
     if (lock_get_mode(lock) == LOCK_S) {
         read_locks.push_back(lock);
         for (auto read_lock : read_locks) {
-            trx = read_locks->trx;
+            trx = read_lock->trx;
             update_trx_finish_time(trx, delta);
         }
         read_locks.pop_back(lock);
