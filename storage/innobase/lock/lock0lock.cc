@@ -257,6 +257,7 @@ submit_lock_sys_change(
     ulint           page_no,    /* !< Page number of the changed lock. */
     ulint           heap_no)    /* !< Heap number of the changed lock. */
 {
+    return;
     if (!thread_started) {
         return;
     }
@@ -1867,6 +1868,7 @@ update_trx_finish_time(
     trx_t*  trx,
     long    delta)
 {
+    return;
     lock_t*     lock;
     
     trx->finish_time += delta;
@@ -1887,6 +1889,7 @@ update_trx_finish_time(
     lock_t* lock,
     long    delta)
 {
+    return;
     trx_t*  trx;
     
     if (lock_get_mode(lock) == LOCK_S) {
@@ -1929,6 +1932,7 @@ void
 update_rec_release_time(
     lock_t* in_lock)
 {
+    return;
     lock_t*     lock;
     ulint       space;
     ulint       page_no;
@@ -2090,8 +2094,8 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
         lock_set_lock_and_trx_wait(lock, lock->trx);
     } else if (add_to_hash) {
         update_rec_release_time(lock);
+        submit_lock_sys_change(lock_hash, space, page_no, heap_no);
     }
-    submit_lock_sys_change(lock_hash, space, page_no, heap_no);
     
 }
 
@@ -2288,6 +2292,10 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
     TraceTool::get_instance()->path_count = 42;
     TRACE_START();
     lock_t* last_wait_lock = NULL;
+    ulint   space;
+    ulint   page_no;
+    ulint   heap_no;
+    hash_table_t*   lock_hash;
     
 	ut_ad(lock_mutex_own());
 	ut_ad(m_trx == thr_get_trx(m_thr));
@@ -2305,11 +2313,17 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 
 	/* Don't queue the lock to hash table, if high priority transaction. */
 	lock_t*	lock = create(m_trx, true, !high_priority, prdt);
+    
+    lock_hash = lock_hash_get(lock->type_mode);
+    space = lock->un_member.rec_lock.space;
+    page_no = lock->un_member.rec_lock.page_no;
+    heap_no = lock_rec_find_set_bit(lock);
 
 	/* Attempt to jump over the low priority waiting locks. */
     if (high_priority && jump_queue(lock, wait_for)) {
         
         update_rec_release_time(lock);
+        submit_lock_sys_change(lock_hash, space, page_no, heap_no);
 
         /* Lock is granted */
         TRACE_END(1);
@@ -2329,6 +2343,7 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
         } else {
             update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time);
         }
+        submit_lock_sys_change(lock_hash, space, page_no, heap_no);
     }
     
     if (err == DB_DEADLOCK ||
