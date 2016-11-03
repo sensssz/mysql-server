@@ -125,6 +125,7 @@ struct lock_sys_change_t {
 static lock_sys_change_t  *lock_sys_change;
 static pthread_t swap_thread;
 static bool thread_shutdown;
+static bool thread_started = false;
 
 /*********************************************************************//**
 Submit a lock system change event. */
@@ -204,6 +205,7 @@ swap_thread_start()
     thread_shutdown = false;
     lock_sys_change_create();
     pthread_create(&swap_thread, NULL, handle_lock_sys_change_events, NULL);
+    thread_started = true;
 }
 
 
@@ -212,6 +214,7 @@ Stop the swap background thread. */
 void
 swap_thread_stop()
 {
+    thread_started = false;
     thread_shutdown = true;
     pthread_cond_signal(&lock_sys_change->cond);
     pthread_join(swap_thread, NULL);
@@ -253,6 +256,9 @@ submit_lock_sys_change(
     ulint           page_no,    /* !< Page number of the changed lock. */
     ulint           heap_no)    /* !< Heap number of the changed lock. */
 {
+    if (!thread_started) {
+        return;
+    }
     lock_sys_change_event_t event;
     event.lock_hash = lock_hash;
     event.space = space;
