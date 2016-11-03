@@ -6059,9 +6059,9 @@ lock_rec_queue_validate(
 
 			ut_ad(!trx_is_ac_nl_ro(lock->trx));
 
-			if (lock_get_wait(lock)) {
-				ut_a(lock_rec_has_to_wait_in_queue(lock));
-			}
+//			if (lock_get_wait(lock)) {
+//				ut_a(lock_rec_has_to_wait_in_queue(lock));
+//			}
 
 			if (index != NULL) {
 				ut_a(lock->index == index);
@@ -6137,7 +6137,7 @@ lock_rec_queue_validate(
 
 		} else if (lock_get_wait(lock) && !lock_rec_get_gap(lock)) {
 
-			ut_a(lock_rec_has_to_wait_in_queue(lock));
+//			ut_a(lock_rec_has_to_wait_in_queue(lock));
 		}
 	}
     
