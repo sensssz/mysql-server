@@ -389,9 +389,7 @@ swap_locks_if_beneficial(
         lock1_prev = (lock_t **) &cell->node;
     }
     
-    lock = (lock_t*) cell->node;
-    for (; lock != NULL;
-         lock = lock->hash) {
+    for (lock = (lock_t*) cell->node; lock != NULL; lock = lock->hash) {
         if (lock->hash == lock1) {
             lock1_prev = &lock->hash;
         }
