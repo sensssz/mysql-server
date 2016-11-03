@@ -2285,6 +2285,8 @@ queue is itself waiting roll it back, also do a deadlock check and resolve.
 dberr_t
 RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 {
+    TraceTool::get_instance()->path_count = 42;
+    TRACE_START();
     lock_t* last_wait_lock = NULL;
     
 	ut_ad(lock_mutex_own());
@@ -2310,6 +2312,8 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
         update_rec_release_time(lock);
 
         /* Lock is granted */
+        TRACE_END(1);
+        TraceTool::get_instance()->path_count = 0;
 		return(DB_SUCCESS);
 	}
 
@@ -2326,6 +2330,11 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
             update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time);
         }
     }
+    
+    if (err == DB_DEADLOCK ||
+        err == DB_SUCCESS_LOCKED_REC) {
+        ++TraceTool::get_instance()->num_waits;
+    }
 
 	ut_ad(trx_mutex_own(m_trx));
 
@@ -2333,6 +2342,8 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	if (err == DB_LOCK_WAIT) {
 		thd_report_row_lock_wait(current_thd, wait_for->trx->mysql_thd);
     }
+    TRACE_END(1);
+    TraceTool::get_instance()->path_count = 0;
 	return(err);
 }
 
@@ -3039,6 +3050,8 @@ lock_rec_dequeue_from_page(
 					get their lock requests granted,
 					if they are now qualified to it */
 {
+    TraceTool::get_instance()->path_count = 42;
+    TRACE_START();
 	ulint		space;
 	ulint		page_no;
     ulint       nbits;
@@ -3143,6 +3156,8 @@ lock_rec_dequeue_from_page(
     }
     
     update_rec_release_time(in_lock);
+    TRACE_END(2);
+    TraceTool::get_instance()->path_count = 0;
 }
 
 /*************************************************************//**

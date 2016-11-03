@@ -470,8 +470,8 @@ void TraceTool::write_log()
 //  time_so_far.clear();
   
   write_latency("latency/");
-  ofstream num_trans_file("latency/num_trans");
-  num_trans_file << num_trans[0] << endl;
+  ofstream num_trans_file("latency/num_deadlocks");
+  num_trans_file << num_waits << endl;
   num_trans_file.close();
   
   memset(num_trans, 0, TRX_TYPES * sizeof(long));
