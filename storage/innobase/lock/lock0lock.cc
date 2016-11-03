@@ -1887,7 +1887,7 @@ update_trx_finish_time(
             trx = read_lock->trx;
             update_trx_finish_time(trx, delta);
         }
-        read_locks.pop_back(lock);
+        read_locks.pop_back();
     } else {
         trx = lock->trx;
         update_trx_finish_time(trx, delta);
@@ -2042,31 +2042,6 @@ insert_and_find_last_wait_lock(
     }
     lock->hash = in_lock;
     return last_wait_lock;
-}
-
-static
-lock_t*
-find_prev_wait_lock(
-    hash_table_t*   lock_hash,
-    lock_t*         in_lock,
-    ulint           space,
-    ulint           page_no,
-    ulint           heap_no,
-    ulint           rec_fold)
-{
-    lock_t* prev_wait_lock;
-    lock_t*         lock;
-    
-    prev_wait_lock = NULL;
-    for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
-         lock != in_lock;
-         lock = lock_rec_get_next(heap_no, lock)) {
-        if (lock_get_wait(lock)) {
-            prev_wait_lock = lock;
-        }
-    }
-    
-    return prev_wait_lock;
 }
 
 
