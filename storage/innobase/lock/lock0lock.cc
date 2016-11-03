@@ -300,14 +300,15 @@ process_lock_sys_change_event(
     std::vector<lock_t*>    read_locks_on_rec;
     std::vector<lock_t*>    locks_on_rec;
     
-    fprintf(stderr, "Processing event (%lu, %lu, %lu)\n", event.space, event.page_no, event.heap_no);
-    
     has_seen_read_lock = false;
     lock_mutex_enter();
     trx_sys_mutex_enter();
     for (lock = lock_rec_get_first(event.lock_hash, event.space, event.page_no, event.heap_no);
          lock != NULL;
          lock = lock_rec_get_next(event.heap_no, lock)) {
+        if (!lock_get_wait(lock)) {
+            continue;
+        }
         if (has_seen_read_lock
             && lock_get_mode(lock) == LOCK_S) {
             read_locks_on_rec.push_back(lock);
@@ -384,13 +385,13 @@ swap_locks_if_beneficial(
     cell = hash_get_nth_cell(event.lock_hash, hash_calc_hash(rec_fold, event.lock_hash));
 
     lock1_prev = lock2_prev = NULL;
-    lock = lock_rec_get_first(event.lock_hash, event.space, event.page_no, event.heap_no);
     if (lock1 == cell->node) {
         lock1_prev = (lock_t **) &cell->node;
     }
     
+    lock = (lock_t*) cell->node;
     for (; lock != NULL;
-         lock = lock_rec_get_next(event.heap_no, lock)) {
+         lock = lock->hash) {
         if (lock->hash == lock1) {
             lock1_prev = &lock->hash;
         }
