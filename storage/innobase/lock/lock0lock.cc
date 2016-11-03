@@ -3086,7 +3086,7 @@ lock_rec_dequeue_from_page(
     
     std::vector<lock_t *> locks_to_grant;
     for (ulint heap_no = 0; heap_no < nbits; ++heap_no) {
-        if (!lock_rec_get_nth_bit(lock, heap_no)) {
+        if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
             continue;
         }
         has_granted_locks = false;
