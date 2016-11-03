@@ -1580,14 +1580,9 @@ lock_rec_other_has_conflicting(
 	     lock != NULL;
 	     lock = lock_rec_get_next_const(heap_no, lock)) {
 
-        /*
 		if (lock_rec_has_to_wait(trx, mode, lock, is_supremum)) {
 			return(lock);
 		}
-         */
-        if (!lock_get_wait(lock)) {
-            return lock;
-        }
 	}
 
 	return(NULL);
