@@ -1874,7 +1874,8 @@ update_trx_finish_time(
     for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
          lock != NULL;
          lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
-        if (lock_get_type_low(lock) == LOCK_REC) {
+        if (lock_get_type_low(lock) == LOCK_REC
+            && !lock_get_wait(lock)) {
             update_rec_release_time(lock);
         }
     }
