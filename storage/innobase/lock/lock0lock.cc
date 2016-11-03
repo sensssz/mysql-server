@@ -182,7 +182,7 @@ static
 void
 lock_sys_change_create()
 {
-    lock_sys_change = static_cast<lock_sys_change_t*>(ut_zalloc_nokey(sizeof(lock_sys_change_t)));
+    lock_sys_change = new lock_sys_change_t;
     pthread_mutex_init(&lock_sys_change->mutex, NULL);
     pthread_cond_init(&lock_sys_change->cond, NULL);
 }
@@ -194,6 +194,7 @@ lock_sys_change_stop()
     pthread_cond_destroy(&lock_sys_change->cond);
     pthread_mutex_destroy(&lock_sys_change->mutex);
     lock_sys_change->event_queue.clear();
+    delete lock_sys_change;
     lock_sys_change = NULL;
 }
 
