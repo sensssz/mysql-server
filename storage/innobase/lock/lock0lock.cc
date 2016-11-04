@@ -1572,7 +1572,8 @@ handle_trx_sub_tree_change(
     
     trx->sub_tree_size += sub_tree_size_change;
     if (trx->state != TRX_STATE_ACTIVE
-        || trx->lock.que_state != TRX_QUE_LOCK_WAIT) {
+        || trx->lock.que_state != TRX_QUE_LOCK_WAIT
+        || trx->lock.wait_lock == NULL) {
         return;
     }
     // Is waiting for other transactions
