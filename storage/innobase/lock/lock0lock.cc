@@ -1867,7 +1867,8 @@ bool
 is_waiting_on(
     trx_t*  trx,
     lock_t* lock) {
-    if (trx->state != TRX_QUE_LOCK_WAIT) {
+    if (trx->state == TRX_STATE_ACTIVE
+        && trx->lock.que_state != TRX_QUE_LOCK_WAIT) {
         return false;
     }
     
