@@ -1945,7 +1945,8 @@ static
 long
 find_max_trx_finish_time(
     hash_table_t*   lock_hash,
-    triplet         rec)
+    triplet         rec,
+    trx_t*          trx)
 {
     lock_t* lock;
     long    max_finish_time;
@@ -1956,6 +1957,7 @@ find_max_trx_finish_time(
          lock != NULL;
          lock = lock_rec_get_next(rec.heap_no, lock)) {
         if (!lock_get_wait(lock)
+            && trx != lock->trx
             && lock->trx->finish_time > max_finish_time) {
             max_finish_time = lock->trx->finish_time;
         }
@@ -1996,7 +1998,7 @@ update_rec_release_time(
             
             rec.heap_no = heap_no;
             release_time = rec_release_time[rec];
-            new_release_time = find_max_trx_finish_time(lock_hash, rec);
+            new_release_time = find_max_trx_finish_time(lock_hash, rec, in_lock->trx);
             fprintf(stderr, "(%lu,%lu,%lu)->[", space, page_no, heap_no);
             if (release_time != new_release_time
                 && new_release_time != 0) {
