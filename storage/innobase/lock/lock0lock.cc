@@ -2842,7 +2842,6 @@ lock_rec_dequeue_from_page(
 	ulint		space;
 	ulint		page_no;
     ulint       heap_no;
-    ulint       rec_fold;
 	lock_t*		lock;
 	trx_lock_t*	trx_lock;
 	hash_table_t*	lock_hash;
@@ -2855,7 +2854,6 @@ lock_rec_dequeue_from_page(
 
 	space = in_lock->un_member.rec_lock.space;
 	page_no = in_lock->un_member.rec_lock.page_no;
-    rec_fold = lock_rec_fold(space, page_no);
 
 	ut_ad(in_lock->index->table->n_rec_locks > 0);
 	in_lock->index->table->n_rec_locks--;
@@ -4699,7 +4697,6 @@ lock_rec_unlock(
 	lock_t*		first_lock;
 	lock_t*		lock;
 	ulint		heap_no;
-    ulint       rec_fold;
 	const char*	stmt;
 	size_t		stmt_len;
 
@@ -4747,7 +4744,6 @@ released:
     if (innodb_lock_schedule_algorithm
         == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
         && !thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
-        rec_fold = lock_rec_fold(lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no);
         
         std::vector<lock_t *> read_chunk;
         std::vector<lock_t *> write_locks;
