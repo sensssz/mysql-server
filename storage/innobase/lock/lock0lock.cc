@@ -1983,7 +1983,9 @@ update_rec_release_time(
                  lock != NULL;
                  lock = lock_rec_get_next(rec.heap_no, lock)) {
                 if (lock_get_wait(lock)) {
-                    fprintf(stderr, "(%p, %ld),", (void*) lock->trx, new_release_time - release_time);
+                    if (depth == 1001) {
+                        fprintf(stderr, "(%p, %ld),", (void*) lock->trx, new_release_time - release_time);
+                    }
                     update_trx_finish_time(lock->trx, new_release_time - release_time, depth + 1);
                 }
             }
