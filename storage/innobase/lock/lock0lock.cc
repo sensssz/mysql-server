@@ -1866,14 +1866,14 @@ void
 update_trx_finish_time(
     trx_t*  trx,
     long    delta,
-    ulint   depth = 1)
+    ulint   depth)
 {
     lock_t*     lock;
     
     trx->finish_time += delta;
     
     if (depth == 1000) {
-        fprintf(stderr, "========================================================================\ntrx: %p->[");
+        fprintf(stderr, "========================================================================\ntrx: %p->[", (void*) trx);
         
         for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
              lock != NULL;
@@ -1948,7 +1948,7 @@ find_max_trx_finish_time(
 void
 update_rec_release_time(
     lock_t* in_lock,
-    ulint   depth = 1)
+    ulint   depth)
 {
     lock_t*     lock;
     ulint       space;
@@ -1983,13 +1983,13 @@ update_rec_release_time(
                  lock != NULL;
                  lock = lock_rec_get_next(rec.heap_no, lock)) {
                 if (lock_get_wait(lock)) {
-                    fprintf(stderr, "(%p, %ld),", lock->trx, new_release_time - release_time);
+                    fprintf(stderr, "(%p, %ld),", (void*) lock->trx, new_release_time - release_time);
                     update_trx_finish_time(lock->trx, new_release_time - release_time, depth + 1);
                 }
             }
         }
         if (depth == 1001) {
-            fprintf(stderr, "]\n", space, page_no, heap_no);
+            fprintf(stderr, "]\n");
         }
 
     }
