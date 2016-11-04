@@ -1634,7 +1634,7 @@ lock_rec_fix_sub_tree_size(
              lock = lock_rec_get_next_on_page_const(lock)) {
             if (lock_get_wait(lock)
                 && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))
-                && in_lock->trx != lock->trx)) {
+                && in_lock->trx != lock->trx) {
                 sub_tree_size_change += lock->trx->sub_tree_size + 1;
             }
         }
@@ -2873,10 +2873,7 @@ lock_rec_dequeue_from_page(
     if (innodb_lock_schedule_algorithm
         == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
         && !thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {
-    
-        hash_cell_t* cell = hash_get_nth_cell(lock_hash,
-                                              hash_calc_hash(rec_fold,
-                                                             lock_hash));
+        
         std::unordered_map<ulint, std::vector<lock_t *>> read_chunks;
         std::unordered_map<ulint, std::vector<lock_t *>> write_locks;
         std::set<ulint> heap_nos;
