@@ -1873,7 +1873,18 @@ update_trx_finish_time(
     trx->finish_time += delta;
     
     if (depth > 1000) {
-        fprintf(stderr, "Depth is 1000\n");
+        fprintf(stderr, "=========================================================\n");
+        fprintf(stderr, "%lu->[", trx->id);
+        for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
+             lock != NULL;
+             lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+            if (lock_get_type_low(lock) == LOCK_REC
+                && !lock_get_wait(lock)) {
+                fprintf(stderr, "(%u,%u,%lu),", lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no, lock_rec_find_set_bit(lock));
+            }
+        }
+        fprintf(stderr, "]\n");
+        fprintf(stderr, "=========================================================\n");
         return;
     }
     
@@ -1946,17 +1957,31 @@ update_rec_release_time(
     triplet     rec;
     hash_table_t*   lock_hash;
     
-    if (depth > 1000) {
-        fprintf(stderr, "Depth is 1000\n");
-        return;
-    }
-    
     space = in_lock->un_member.rec_lock.space;
     page_no = in_lock->un_member.rec_lock.page_no;
     rec.space = space;
     rec.page_no = page_no;
     lock_hash = lock_hash_get(in_lock->type_mode);
     nbits = lock_rec_get_n_bits(in_lock);
+    
+    
+    if (depth > 1000) {
+        fprintf(stderr, "=========================================================\n");
+        fprintf(stderr, "(%u,%u,%lu)->[", space, page_no, lock_rec_find_set_bit(in_lock));
+        
+        for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
+             lock != NULL;
+             lock = lock_rec_get_next(rec.heap_no, lock)) {
+            if (lock_get_wait(lock)) {
+                fprintf(stderr, "%lu,", lock->trx->id);
+            }
+        }
+        fprintf(stderr, "]\n");
+        fprintf(stderr, "=========================================================\n");
+        
+        return;
+    }
+    
     for (heap_no = 0; heap_no < nbits; heap_no++) {
         if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
             continue;
