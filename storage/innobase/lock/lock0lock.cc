@@ -1976,7 +1976,7 @@ update_rec_release_time(
             rec.heap_no = heap_no;
             release_time = rec_release_time[rec];
             new_release_time = find_max_trx_finish_time(lock_hash, rec);
-            fprintf(stderr, "(%u,%u,%lu)->[", space, page_no, heap_no);
+            fprintf(stderr, "(%lu,%lu,%lu)->[", space, page_no, heap_no);
             if (release_time != new_release_time
                 && new_release_time != 0) {
                 for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
