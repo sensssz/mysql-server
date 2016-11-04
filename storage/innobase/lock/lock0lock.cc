@@ -1604,8 +1604,6 @@ lock_rec_fix_sub_tree_size(
 	ulint		space;
 	ulint		page_no;
 	ulint		heap_no;
-	ulint		bit_mask;
-	ulint		bit_offset;
     int         sub_tree_size_change = 0;
 	hash_table_t*	hash;
 
@@ -1625,7 +1623,8 @@ lock_rec_fix_sub_tree_size(
              lock = lock_rec_get_next_on_page_const(lock)) {
 
             if (lock_rec_get_nth_bit(lock, heap_no)
-                && !lock_get_wait(lock)) {
+                && !lock_get_wait(lock)
+                && in_lock->trx != lock->trx) {
                 handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size + 1);
             }
         }
@@ -1634,7 +1633,8 @@ lock_rec_fix_sub_tree_size(
              lock != NULL;
              lock = lock_rec_get_next_on_page_const(lock)) {
             if (lock_get_wait(lock)
-                && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))) {
+                && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))
+                && in_lock->trx != lock->trx)) {
                 sub_tree_size_change += lock->trx->sub_tree_size + 1;
             }
         }
@@ -2806,17 +2806,17 @@ compare_locks_by_subtree_size(
     lock_t* lock1,
     lock_t* lock2)
 {
-    return lock2->sub_tree_size - lock1->sub_tree_size;
+    return lock2->trx->sub_tree_size - lock1->trx->sub_tree_size;
 }
 
-int
+lock_t*
 find_lock_with_max_subtree_size(
     std::vector<lock_t*>    &locks)
 {
     lock_t* result = NULL;
     for (auto lock : locks) {
         if (result == NULL
-            || lock->sub_tree_size > result->sub_tree_size) {
+            || lock->trx->sub_tree_size > result->trx->sub_tree_size) {
             result = lock;
         }
     }
@@ -2933,12 +2933,12 @@ lock_rec_dequeue_from_page(
                     lock->batch_scheduled = true;
                 }
                 for (auto lock : read_chunk) {
-                    lock_grant_and_move(lock_hash, cell, lock, rec_fold);
+                    lock_grant(lock, false);
                 }
 
             } else if (select_result == -1) {
                 write_lock->batch_scheduled = true;
-                lock_grant_and_move(lock_hash, cell, write_lock, rec_fold);
+                lock_grant(write_lock, false);
             }
         }
     }
@@ -4751,9 +4751,7 @@ released:
         == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
         && !thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
         rec_fold = lock_rec_fold(lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no);
-        hash_cell_t* cell = hash_get_nth_cell(lock_sys->rec_hash,
-                                              hash_calc_hash(rec_fold,
-                                                             lock_sys->rec_hash));
+        
         std::vector<lock_t *> read_chunk;
         std::vector<lock_t *> write_locks;
         lock_t *write_lock = NULL;
@@ -4769,13 +4767,13 @@ released:
                 write_locks.push_back(lock);
             }
         }
-        sort(read_chunk.begin, read_chunk.end(), compare_locks_by_subtree_size);
+        sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_subtree_size);
         while (read_chunk.size() > CHUNK_SIZE) {
             read_chunk.pop_back();
         }
         write_lock =find_lock_with_max_subtree_size(write_locks);
-        lint read_sub_tree_size_total = 0;
-        lint write_sub_tree_size = 0;
+        long read_sub_tree_size_total = 0;
+        long write_sub_tree_size = 0;
         // 1 for read chunk, -1 for write lock
         int select_result = 0;
         for (auto lock : read_chunk) {
