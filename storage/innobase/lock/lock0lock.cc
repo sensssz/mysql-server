@@ -1571,7 +1571,8 @@ handle_trx_sub_tree_change(
     hash_table_t*	hash;
     
     trx->sub_tree_size += sub_tree_size_change;
-    if (trx->state != TRX_QUE_LOCK_WAIT) {
+    if (trx->state != TRX_STATE_ACTIVE
+        || trx->lock.que_state != TRX_QUE_LOCK_WAIT) {
         return;
     }
     // Is waiting for other transactions
@@ -1587,8 +1588,7 @@ handle_trx_sub_tree_change(
     for (; lock != wait_lock;
          lock = lock_rec_get_next(heap_no, lock)) {
         if (!lock_get_wait(lock)
-            && lock->un_member.rec_lock.space == space
-            && lock->un_member.rec_lock.page_no == page_no) {
+            && trx != lock->trx) {
             handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
         }
     }
