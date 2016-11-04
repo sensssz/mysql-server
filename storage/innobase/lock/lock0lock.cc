@@ -1873,7 +1873,7 @@ update_trx_finish_time(
     trx->finish_time += delta;
     
     if (depth > 1000) {
-        fprintf(stderr, "Depth is 1000");
+        fprintf(stderr, "Depth is 1000\n");
         return;
     }
     
@@ -1947,7 +1947,7 @@ update_rec_release_time(
     hash_table_t*   lock_hash;
     
     if (depth > 1000) {
-        fprintf(stderr, "Depth is 1000");
+        fprintf(stderr, "Depth is 1000\n");
         return;
     }
     
