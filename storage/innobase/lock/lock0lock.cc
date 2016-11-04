@@ -1862,6 +1862,27 @@ RecLock::lock_alloc(
 	return(lock);
 }
 
+static
+bool
+is_waiting_on(
+    trx_t*  trx,
+    lock_t* lock) {
+    if (trx->state != TRX_QUE_LOCK_WAIT) {
+        return false;
+    }
+    
+    ulint   space;
+    ulint   page_no;
+    ulint   heap_no;
+    space = trx->lock.wait_lock->un_member.rec_lock.space;
+    page_no = trx->lock.wait_lock->un_member.rec_lock.page_no;
+    heap_no = lock_rec_find_set_bit(trx->lock.wait_lock);
+    
+    return lock->un_member.rec_lock.space == space
+        && lock->un_member.rec_lock.page_no == page_no
+        && lock_rec_get_nth_bit(lock, heap_no);
+}
+
 void
 update_trx_finish_time(
     trx_t*  trx,
@@ -2006,7 +2027,8 @@ update_rec_release_time(
             for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
                  lock != NULL;
                  lock = lock_rec_get_next(rec.heap_no, lock)) {
-                if (lock_get_wait(lock)) {
+                if (in_lock->trx != lock->trx
+                    && lock_get_wait(lock)) {
                     update_trx_finish_time(lock->trx, new_release_time - release_time, depth + 1);
                 }
             }
