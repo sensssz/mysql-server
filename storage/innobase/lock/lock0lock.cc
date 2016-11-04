@@ -1885,7 +1885,6 @@ update_trx_finish_time(
         }
         fprintf(stderr, "]\n");
         fprintf(stderr, "=========================================================\n");
-        return;
     }
     
     for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
