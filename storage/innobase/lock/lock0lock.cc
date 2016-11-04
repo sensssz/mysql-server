@@ -2023,7 +2023,7 @@ update_rec_release_time(
         }
         rec.heap_no = heap_no;
         release_time = rec_release_time[rec];
-        new_release_time = find_max_trx_finish_time(lock_hash, rec);
+        new_release_time = find_max_trx_finish_time(lock_hash, rec, in_lock->trx);
         rec_release_time[rec] = new_release_time;
         if (release_time != new_release_time
             && new_release_time != 0) {
