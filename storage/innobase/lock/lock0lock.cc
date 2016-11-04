@@ -1874,7 +1874,7 @@ update_trx_finish_time(
     
     if (depth > 1000) {
         fprintf(stderr, "=========================================================\n");
-        fprintf(stderr, "%lu->[", trx->id);
+        fprintf(stderr, "%lu+(%ld)->[", trx->id, delta);
         for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
              lock != NULL;
              lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
@@ -1966,20 +1966,25 @@ update_rec_release_time(
     
     
     if (depth > 1000) {
-        fprintf(stderr, "=========================================================\n");
-        fprintf(stderr, "(%u,%u,%lu)->[", space, page_no, lock_rec_find_set_bit(in_lock));
         
+        fprintf(stderr, "=========================================================\n");
         for (heap_no = 0; heap_no < nbits; heap_no++) {
             if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
                 continue;
             }
             
             rec.heap_no = heap_no;
-            for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
-                 lock != NULL;
-                 lock = lock_rec_get_next(rec.heap_no, lock)) {
-                if (lock_get_wait(lock)) {
-                    fprintf(stderr, "%lu,", lock->trx->id);
+            release_time = rec_release_time[rec];
+            new_release_time = find_max_trx_finish_time(lock_hash, rec);
+            fprintf(stderr, "(%u,%u,%lu)->[", space, page_no, heap_no);
+            if (release_time != new_release_time
+                && new_release_time != 0) {
+                for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
+                     lock != NULL;
+                     lock = lock_rec_get_next(rec.heap_no, lock)) {
+                    if (lock_get_wait(lock)) {
+                        fprintf(stderr, "%lu+(%ld),", lock->trx->id, new_release_time - release_time);
+                    }
                 }
             }
             fprintf(stderr, "]\n");
