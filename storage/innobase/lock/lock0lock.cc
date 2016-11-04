@@ -1872,7 +1872,7 @@ update_trx_finish_time(
     
     trx->finish_time += delta;
     
-    if (depth > 500) {
+    if (depth > 1000) {
         fprintf(stderr, "=========================================================\n");
         fprintf(stderr, "%lu->[", trx->id);
         for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
@@ -1885,6 +1885,7 @@ update_trx_finish_time(
         }
         fprintf(stderr, "]\n");
         fprintf(stderr, "=========================================================\n");
+        return;
     }
     
     for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
@@ -1964,18 +1965,25 @@ update_rec_release_time(
     nbits = lock_rec_get_n_bits(in_lock);
     
     
-    if (depth > 500) {
+    if (depth > 1000) {
         fprintf(stderr, "=========================================================\n");
         fprintf(stderr, "(%u,%u,%lu)->[", space, page_no, lock_rec_find_set_bit(in_lock));
         
-        for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
-             lock != NULL;
-             lock = lock_rec_get_next(rec.heap_no, lock)) {
-            if (lock_get_wait(lock)) {
-                fprintf(stderr, "%lu,", lock->trx->id);
+        for (heap_no = 0; heap_no < nbits; heap_no++) {
+            if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
+                continue;
             }
+            
+            rec.heap_no = heap_no;
+            for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
+                 lock != NULL;
+                 lock = lock_rec_get_next(rec.heap_no, lock)) {
+                if (lock_get_wait(lock)) {
+                    fprintf(stderr, "%lu,", lock->trx->id);
+                }
+            }
+            fprintf(stderr, "]\n");
         }
-        fprintf(stderr, "]\n");
         fprintf(stderr, "=========================================================\n");
         
         return;
@@ -2101,8 +2109,6 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
     ulint   space;
     ulint   page_no;
     ulint   heap_no;
-    triplet rec;
-    long    release_time;
     hash_table_t*   lock_hash;
     
     wait_lock = m_mode & LOCK_WAIT;
@@ -2124,24 +2130,11 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
     
     if (wait_lock) {
         lock_set_lock_and_trx_wait(lock, lock->trx);
-        if (last_wait_lock != NULL) {
-            if (lock_get_mode(lock) == LOCK_S
-                && lock_get_mode(last_wait_lock) == LOCK_S) {
-                update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time - lock->trx->finish_time);
-            } else {
-                update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time);
-            }
-        } else {
-            rec.space = space;
-            rec.page_no = page_no;
-            rec.heap_no = heap_no;
-            release_time = rec_release_time[rec];
-            update_trx_finish_time(lock->trx, release_time + 1 - lock->trx->finish_time);
-        }
     } else if (add_to_hash) {
         update_rec_release_time(lock);
+        submit_lock_sys_change(lock_hash, space, page_no, heap_no);
     }
-    submit_lock_sys_change(lock_hash, space, page_no, heap_no);
+    
 }
 
 /**
@@ -2382,7 +2375,23 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 
 	dberr_t	err = deadlock_check(lock);
     
-    if (err == DB_SUCCESS_LOCKED_REC) {
+    if (err == DB_LOCK_WAIT) {
+        if (last_wait_lock != NULL) {
+            if (lock_get_mode(lock) == LOCK_S
+                && lock_get_mode(last_wait_lock) == LOCK_S) {
+                update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time - lock->trx->finish_time);
+            } else {
+                update_trx_finish_time(lock->trx, last_wait_lock->trx->finish_time);
+            }
+        } else {
+            rec.space = space;
+            rec.page_no = page_no;
+            rec.heap_no = heap_no;
+            release_time = rec_release_time[rec];
+            update_trx_finish_time(lock->trx, release_time + 1 - lock->trx->finish_time);
+        }
+        submit_lock_sys_change(lock_hash, space, page_no, heap_no);
+    } else if (err == DB_SUCCESS_LOCKED_REC) {
         update_rec_release_time(lock);
         submit_lock_sys_change(lock_hash, space, page_no, heap_no);
     }
