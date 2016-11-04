@@ -1782,16 +1782,7 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 		++lock->index->table->n_rec_locks;
         
-        if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-            && !thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
-            if (wait_lock) {
-                HASH_INSERT(lock_t, hash, lock_hash, key, lock);
-            } else {
-                lock_rec_insert_to_head(lock, m_rec_id.fold());
-            }
-        } else {
-            HASH_INSERT(lock_t, hash, lock_hash, key, lock);
-        }
+        HASH_INSERT(lock_t, hash, lock_hash, key, lock);
 	}
 
 	if (wait_lock) {
@@ -2028,23 +2019,6 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
     }
 
 	ut_ad(trx_mutex_own(m_trx));
-    
-    // Move it only when it does not cause a deadlock.
-    if (err != DB_DEADLOCK
-        && innodb_lock_schedule_algorithm
-            == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-        && !thd_is_replication_slave_thread(lock->trx->mysql_thd)
-        && !trx_is_high_priority(lock->trx)) {
-        
-        HASH_DELETE(lock_t, hash, lock_hash_get(lock->type_mode),
-                    m_rec_id.fold(), lock);
-        dberr_t res = lock_rec_insert_by_subtree_size(lock);
-        if (res != DB_SUCCESS) {
-            TRACE_END(1);
-            TraceTool::path_count = 0;
-            return res;
-        }
-    }
 
 	/* m_trx->mysql_thd is NULL if it's an internal trx. So current_thd is used */
 	if (err == DB_LOCK_WAIT) {
@@ -2827,6 +2801,28 @@ lock_grant_and_move(
     }
 }
 
+int
+compare_locks_by_subtree_size(
+    lock_t* lock1,
+    lock_t* lock2)
+{
+    return lock2->sub_tree_size - lock1->sub_tree_size;
+}
+
+int
+find_lock_with_max_subtree_size(
+    std::vector<lock_t*>    &locks)
+{
+    lock_t* result = NULL;
+    for (auto lock : locks) {
+        if (result == NULL
+            || lock->sub_tree_size > result->sub_tree_size) {
+            result = lock;
+        }
+    }
+    return result;
+}
+
 /*************************************************************//**
 Removes a record lock request, waiting or granted, from the queue and
 grants locks to other transactions in the queue if they now are entitled
@@ -2882,7 +2878,7 @@ lock_rec_dequeue_from_page(
                                               hash_calc_hash(rec_fold,
                                                              lock_hash));
         std::unordered_map<ulint, std::vector<lock_t *>> read_chunks;
-        std::unordered_map<ulint, lock_t *> write_locks;
+        std::unordered_map<ulint, std::vector<lock_t *>> write_locks;
         std::set<ulint> heap_nos;
         
         for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
@@ -2896,12 +2892,10 @@ lock_rec_dequeue_from_page(
             if (lock_rec_get_nth_bit(in_lock, heap_no) &&
                 !lock_rec_has_to_wait_granted(lock)) {
                 heap_nos.insert(heap_no);
-                if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S &&
-                    read_chunks[heap_no].size() < CHUNK_SIZE) {
+                if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S) {
                     read_chunks[heap_no].push_back(lock);
-                } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X &&
-                           write_locks[heap_no] == NULL) {
-                    write_locks[heap_no] = lock;
+                } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X) {
+                    write_locks[heap_no].push_back(lock);
                 }
             }
         }
@@ -2909,7 +2903,11 @@ lock_rec_dequeue_from_page(
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
             auto &read_chunk = read_chunks[heap_no];
-            auto write_lock = write_locks[heap_no];
+            sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_subtree_size);
+            while (read_chunk.size() > CHUNK_SIZE) {
+                read_chunk.pop_back();
+            }
+            auto write_lock = find_lock_with_max_subtree_size(write_locks[heap_no]);
             // 1 for read chunk, -1 for write lock
             int select_result = 0;
             for (auto lock : read_chunk) {
@@ -4757,6 +4755,7 @@ released:
                                               hash_calc_hash(rec_fold,
                                                              lock_sys->rec_hash));
         std::vector<lock_t *> read_chunk;
+        std::vector<lock_t *> write_locks;
         lock_t *write_lock = NULL;
         
         for (lock = first_lock; lock != NULL;
@@ -4764,14 +4763,17 @@ released:
             if (!lock_get_wait(lock)) {
                 continue;
             }
-            if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S &&
-                read_chunk.size() < CHUNK_SIZE) {
+            if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S) {
                 read_chunk.push_back(lock);
-            } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X &&
-                       write_lock == NULL) {
-                write_lock = lock;
+            } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X) {
+                write_locks.push_back(lock);
             }
         }
+        sort(read_chunk.begin, read_chunk.end(), compare_locks_by_subtree_size);
+        while (read_chunk.size() > CHUNK_SIZE) {
+            read_chunk.pop_back();
+        }
+        write_lock =find_lock_with_max_subtree_size(write_locks);
         lint read_sub_tree_size_total = 0;
         lint write_sub_tree_size = 0;
         // 1 for read chunk, -1 for write lock
@@ -4799,12 +4801,12 @@ released:
                 lock->batch_scheduled = true;
             }
             for (auto lock : read_chunk) {
-                lock_grant_and_move(lock_sys->rec_hash, cell, lock, rec_fold);
+                lock_grant(lock, false);
             }
             
         } else if (select_result == -1) {
             write_lock->batch_scheduled = true;
-            lock_grant_and_move(lock_sys->rec_hash, cell, write_lock, rec_fold);
+            lock_grant(write_lock, false);
         }
     }
     
