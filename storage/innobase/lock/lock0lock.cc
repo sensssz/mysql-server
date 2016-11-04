@@ -1880,7 +1880,7 @@ update_trx_finish_time(
              lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
             if (lock_get_type_low(lock) == LOCK_REC
                 && !lock_get_wait(lock)) {
-                fprintf(stderr, "(%lu, %lu, %lu),", lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no, lock_rec_find_set_bit(lock));
+                fprintf(stderr, "(%u, %u, %lu),", lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no, lock_rec_find_set_bit(lock));
             }
         }
         
