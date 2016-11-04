@@ -1854,6 +1854,8 @@ RecLock::lock_alloc(
 	MONITOR_INC(MONITOR_NUM_RECLOCK);
 
 	MONITOR_INC(MONITOR_RECLOCK_CREATED);
+    
+    lock->hash = NULL;
 
 	return(lock);
 }
