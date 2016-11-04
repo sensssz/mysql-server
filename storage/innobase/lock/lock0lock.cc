@@ -162,7 +162,8 @@ static
 void
 update_trx_finish_time(
     trx_t*  trx,
-    long    delta);
+    long    delta,
+    ulint   depth = 1);
 
 void
 update_trx_finish_time(
@@ -173,7 +174,8 @@ update_trx_finish_time(
 static
 void
 update_rec_release_time(
-    lock_t* lock);
+    lock_t* lock,
+    ulint   depth = 1);
 
 #define lock_sys_change_mutex_enter() pthread_mutex_lock(&lock_sys_change->mutex)
 #define lock_sys_change_mutex_exit() pthread_mutex_unlock(&lock_sys_change->mutex)
@@ -1863,19 +1865,39 @@ RecLock::lock_alloc(
 void
 update_trx_finish_time(
     trx_t*  trx,
-    long    delta)
+    long    delta,
+    ulint   depth = 1)
 {
     lock_t*     lock;
     
     trx->finish_time += delta;
+    
+    if (depth == 1000) {
+        fprintf(stderr, "========================================================================\ntrx: %p->[");
+        
+        for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
+             lock != NULL;
+             lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+            if (lock_get_type_low(lock) == LOCK_REC
+                && !lock_get_wait(lock)) {
+                fprintf(stderr, "(%lu, %lu, %lu),", lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no, lock_rec_find_set_bit(lock));
+            }
+        }
+        
+        fprintf(stderr, "]\n");
+    }
     
     for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
          lock != NULL;
          lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
         if (lock_get_type_low(lock) == LOCK_REC
             && !lock_get_wait(lock)) {
-            update_rec_release_time(lock);
+            update_rec_release_time(lock, depth + 1);
         }
+    }
+    
+    if (depth == 1000) {
+        fprintf(stderr, "========================================================================\n");
     }
 }
 
@@ -1925,7 +1947,8 @@ find_max_trx_finish_time(
 
 void
 update_rec_release_time(
-    lock_t* in_lock)
+    lock_t* in_lock,
+    ulint   depth = 1)
 {
     lock_t*     lock;
     ulint       space;
@@ -1951,16 +1974,24 @@ update_rec_release_time(
         release_time = rec_release_time[rec];
         new_release_time = find_max_trx_finish_time(lock_hash, rec);
         rec_release_time[rec] = new_release_time;
+        if (depth == 1001) {
+            fprintf(stderr, "(%lu, %lu, %lu)->[", space, page_no, heap_no);
+        }
         if (release_time != new_release_time
             && new_release_time != 0) {
             for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
                  lock != NULL;
                  lock = lock_rec_get_next(rec.heap_no, lock)) {
                 if (lock_get_wait(lock)) {
-                    update_trx_finish_time(lock->trx, new_release_time - release_time);
+                    fprintf(stderr, "(%p, %ld),", lock->trx, new_release_time - release_time);
+                    update_trx_finish_time(lock->trx, new_release_time - release_time, depth + 1);
                 }
             }
         }
+        if (depth == 1001) {
+            fprintf(stderr, "]\n", space, page_no, heap_no);
+        }
+
     }
 }
 
@@ -2037,11 +2068,9 @@ insert_and_find_last_wait_lock(
             && lock->un_member.rec_lock.space == space
             && lock->un_member.rec_lock.page_no == page_no
             && lock_rec_get_nth_bit(lock, heap_no)) {
-            if (lock_get_mode(lock) == LOCK_S) {
-                last_wait_lock = lock;
-            } else if (!is_read_lock
-                    || last_wait_lock == NULL
-                    || lock_get_mode(last_wait_lock) != LOCK_S) {
+            if (!(is_read_lock
+                  && last_wait_lock != NULL
+                  && lock_get_mode(lock) != LOCK_S)) {
                 last_wait_lock = lock;
             }
         }
