@@ -162,7 +162,8 @@ static
 void
 update_trx_finish_time(
     trx_t*  trx,
-    long    delta);
+    long    delta,
+    ulint   depth = 1);
 
 void
 update_trx_finish_time(
@@ -173,7 +174,8 @@ update_trx_finish_time(
 static
 void
 update_rec_release_time(
-    lock_t* lock);
+    lock_t* lock,
+    ulint   depth = 1);
 
 #define lock_sys_change_mutex_enter() pthread_mutex_lock(&lock_sys_change->mutex)
 #define lock_sys_change_mutex_exit() pthread_mutex_unlock(&lock_sys_change->mutex)
@@ -1863,18 +1865,24 @@ RecLock::lock_alloc(
 void
 update_trx_finish_time(
     trx_t*  trx,
-    long    delta)
+    long    delta,
+    ulint   depth)
 {
     lock_t*     lock;
     
     trx->finish_time += delta;
+    
+    if (depth > 1000) {
+        fprintf(stderr, "Depth is 1000");
+        return;
+    }
     
     for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
          lock != NULL;
          lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
         if (lock_get_type_low(lock) == LOCK_REC
             && !lock_get_wait(lock)) {
-            update_rec_release_time(lock);
+            update_rec_release_time(lock, depth + 1);
         }
     }
 }
@@ -1925,7 +1933,8 @@ find_max_trx_finish_time(
 
 void
 update_rec_release_time(
-    lock_t* in_lock)
+    lock_t* in_lock,
+    ulint   depth)
 {
     lock_t*     lock;
     ulint       space;
@@ -1936,6 +1945,11 @@ update_rec_release_time(
     long        new_release_time;
     triplet     rec;
     hash_table_t*   lock_hash;
+    
+    if (depth > 1000) {
+        fprintf(stderr, "Depth is 1000");
+        return;
+    }
     
     space = in_lock->un_member.rec_lock.space;
     page_no = in_lock->un_member.rec_lock.page_no;
@@ -1957,7 +1971,7 @@ update_rec_release_time(
                  lock != NULL;
                  lock = lock_rec_get_next(rec.heap_no, lock)) {
                 if (lock_get_wait(lock)) {
-                    update_trx_finish_time(lock->trx, new_release_time - release_time);
+                    update_trx_finish_time(lock->trx, new_release_time - release_time, depth + 1);
                 }
             }
         }
