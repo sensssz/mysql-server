@@ -5003,7 +5003,12 @@ lock_rec_unlock(
 {
 	lock_t*		first_lock;
 	lock_t*		lock;
-	ulint		heap_no;
+    ulint       space;
+    ulint       page_no;
+    ulint		heap_no;
+    bool        has_granted_locks;
+    bool        is_read;
+    triplet     triplet_rec;
 	const char*	stmt;
 	size_t		stmt_len;
 
@@ -5048,6 +5053,41 @@ released:
 	ut_a(!lock_get_wait(lock));
     lock_rec_reset_nth_bit(lock, heap_no);
     
+    std::vector<lock_t *> locks_to_grant;
+    has_granted_locks = false;
+    is_read = false;
+    for (lock = first_lock;
+         lock != NULL;
+         lock = lock_rec_get_next(heap_no, lock)) {
+        if (!lock_get_wait(lock)) {
+            has_granted_locks = true;
+            break;
+        } else {
+            if (locks_to_grant.size() == 0) {
+                locks_to_grant.push_back(lock);
+                is_read = lock_get_mode(lock) == LOCK_S;
+            } else if (is_read && lock_get_mode(lock) == LOCK_S) {
+                locks_to_grant.push_back(lock);
+            }
+        }
+    }
+    if (first_lock != NULL
+        && !has_granted_locks) {
+        space = first_lock->un_member.rec_lock.space;
+        page_no = first_lock->un_member.rec_lock.page_no;
+        triplet_rec.space = space;
+        triplet_rec.page_no = page_no;
+        triplet_rec.heap_no = heap_no;
+        if (locks_to_grant.size() > 0) {
+            for (auto lock : locks_to_grant) {
+                lock_grant(lock, false);
+            }
+            rec_release_time[triplet_rec] = 1;
+            submit_lock_sys_change(lock_sys->rec_hash, space, page_no, heap_no);
+        } else {
+            rec_release_time[triplet_rec] = 0;
+        }
+    }
     
     for (lock = first_lock; lock != NULL;
          lock = lock_rec_get_next(heap_no, lock)) {
