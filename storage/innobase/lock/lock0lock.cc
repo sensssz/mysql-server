@@ -148,7 +148,8 @@ handle_lock_sys_change_events(
 static
 void
 process_lock_sys_change_event(
-    lock_sys_change_event_t event);
+    lock_sys_change_event_t event,
+    bool lock_acquired=false);
 
 static
 bool
@@ -231,6 +232,7 @@ void*
 handle_lock_sys_change_events(
     void* args)
 {
+    return NULL;
     while (!thread_shutdown) {
         lock_sys_change_mutex_enter();
         while (!thread_shutdown &&
@@ -267,10 +269,11 @@ submit_lock_sys_change(
     event.space = space;
     event.page_no = page_no;
     event.heap_no = heap_no;
-    lock_sys_change_mutex_enter();
-    lock_sys_change->event_queue.push_back(std::move(event));
-    pthread_cond_signal(&lock_sys_change->cond);
-    lock_sys_change_mutex_exit();
+    process_lock_sys_change_event(event, true);
+//    lock_sys_change_mutex_enter();
+//    lock_sys_change->event_queue.push_back(std::move(event));
+//    pthread_cond_signal(&lock_sys_change->cond);
+//    lock_sys_change_mutex_exit();
 }
 
 static
@@ -291,7 +294,8 @@ lock_rec_get_first(
 static
 void
 process_lock_sys_change_event(
-    lock_sys_change_event_t event)
+    lock_sys_change_event_t event,
+    bool lock_acquired)
 {
     int         index;
     int         num_swaps;
@@ -303,8 +307,10 @@ process_lock_sys_change_event(
     std::vector<lock_t*>    locks_on_rec;
     
     has_seen_read_lock = false;
-    lock_mutex_enter();
-    trx_sys_mutex_enter();
+    if (!lock_acquired) {
+        lock_mutex_enter();
+        trx_sys_mutex_enter();
+    }
     for (lock = lock_rec_get_first(event.lock_hash, event.space, event.page_no, event.heap_no);
          lock != NULL;
          lock = lock_rec_get_next(event.heap_no, lock)) {
@@ -336,8 +342,10 @@ process_lock_sys_change_event(
             --index;
         }
     }
-    trx_sys_mutex_exit();
-    lock_mutex_exit();
+    if (!lock_acquired) {
+        trx_sys_mutex_exit();
+        lock_mutex_exit();
+    }
 }
 
 
