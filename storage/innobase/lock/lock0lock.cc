@@ -357,17 +357,23 @@ long
 total_finish_time()
 {
     long    total_finish_time;
+  long    num_trx;
     trx_t*  trx;
     
     ut_ad(trx_sys_mutex_own());
     
     total_finish_time = 0;
-    for (trx = UT_LIST_GET_FIRST(trx_sys->mysql_trx_list);
+    num_trx = 0;
+  
+    for (trx = UT_LIST_GET_FIRST(trx_sys->rw_trx_list);
          trx != NULL;
          trx = UT_LIST_GET_NEXT(trx_list, trx)) {
         total_finish_time += trx->finish_time;
+        ++num_trx;
     }
-    
+  
+    TraceTool::get_instance()->num_trx.push_back(num_trx);
+  
     return total_finish_time;
 }
 

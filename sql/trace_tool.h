@@ -107,6 +107,7 @@ public:
                                              transactions*/
     static pthread_mutex_t var_mutex;
     
+    vector<int> num_trx;
     vector<int> read_list_size;
     vector<int> candidate_list_size;
     vector<int> original_finish_time;

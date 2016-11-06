@@ -463,7 +463,7 @@ void TraceTool::write_log()
   //  remaining.close();
   ofstream list_size("latency/list_size");
   for (ulint index = 0; index < candidate_list_size.size(); ++index) {
-    list_size << read_list_size.size() << "," << candidate_list_size[index] << endl;
+    list_size << num_trx[index] << "," << read_list_size[index] << "," << candidate_list_size[index] << endl;
   }
   list_size.close();
   
