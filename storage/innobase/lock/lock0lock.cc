@@ -269,11 +269,11 @@ submit_lock_sys_change(
     event.space = space;
     event.page_no = page_no;
     event.heap_no = heap_no;
-    process_lock_sys_change_event(event, true);
-//    lock_sys_change_mutex_enter();
-//    lock_sys_change->event_queue.push_back(std::move(event));
-//    pthread_cond_signal(&lock_sys_change->cond);
-//    lock_sys_change_mutex_exit();
+//    process_lock_sys_change_event(event, true);
+    lock_sys_change_mutex_enter();
+    lock_sys_change->event_queue.push_back(std::move(event));
+    pthread_cond_signal(&lock_sys_change->cond);
+    lock_sys_change_mutex_exit();
 }
 
 static
@@ -325,8 +325,8 @@ process_lock_sys_change_event(
             has_seen_read_lock = has_seen_read_lock || lock_get_mode(lock) == LOCK_S;
         }
     }
-    // TraceTool::get_instance()->read_list_size.push_back(read_locks_on_rec.size());
-    // TraceTool::get_instance()->candidate_list_size.push_back(locks_on_rec.size());
+    TraceTool::get_instance()->read_list_size.push_back(read_locks_on_rec.size());
+    TraceTool::get_instance()->candidate_list_size.push_back(locks_on_rec.size());
     if ((locks_on_rec.size() >= NUM_SWAPS || true)
         && locks_on_rec.size() >= 2) {
         index = locks_on_rec.size() - 2;
@@ -372,7 +372,7 @@ total_finish_time()
         ++num_trx;
     }
 
-    // TraceTool::get_instance()->num_trx.push_back(num_trx);
+    TraceTool::get_instance()->num_trx.push_back(num_trx);
 
     return total_finish_time;
 }
@@ -435,8 +435,8 @@ swap_locks_if_beneficial(
     
     new_finish_time = total_finish_time();
 
-    // TraceTool::get_instance()->original_finish_time.push_back(original_finish_time);
-    // TraceTool::get_instance()->new_finish_time.push_back(new_finish_time);
+    TraceTool::get_instance()->original_finish_time.push_back(original_finish_time);
+    TraceTool::get_instance()->new_finish_time.push_back(new_finish_time);
 
     if (new_finish_time < original_finish_time) {
         return true;
@@ -2447,7 +2447,7 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
     
     if (err == DB_DEADLOCK ||
         err == DB_SUCCESS_LOCKED_REC) {
-        // ++TraceTool::get_instance()->num_waits;
+        ++TraceTool::get_instance()->num_waits;
     }
 
 	ut_ad(trx_mutex_own(m_trx));
