@@ -1965,7 +1965,6 @@ find_max_trx_finish_time(
          lock != NULL;
          lock = lock_rec_get_next(rec.heap_no, lock)) {
         if (!lock_get_wait(lock)
-            && trx != lock->trx
             && lock->trx->finish_time > max_finish_time) {
             max_finish_time = lock->trx->finish_time;
         }
