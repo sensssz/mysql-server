@@ -326,7 +326,7 @@ process_lock_sys_change_event(
             has_seen_read_lock = has_seen_read_lock || lock_get_mode(lock) == LOCK_S;
         }
     }
-    if (locks_on_rec.size() > NUM_SWAPS) {
+    if (locks_on_rec.size() > NUM_SWAPS || true) {
         index = locks_on_rec.size() - 2;
         num_swaps = 0;
         while (index >= 0) {
@@ -378,8 +378,8 @@ swap_locks_if_beneficial(
     lock_t* lock1,
     lock_t* lock2)
 {
-    long        original_release_time;
-    long        new_release_time;
+    long        original_finish_time;
+    long        new_finish_time;
     lock_t*     lock;
     lock_t**    lock1_prev;
     lock_t**    lock2_prev;
@@ -390,7 +390,7 @@ swap_locks_if_beneficial(
 
     ut_ad(lock_mutex_own());
 
-    original_release_time = total_finish_time();
+    original_finish_time = total_finish_time();
     
     rec_fold = lock_rec_fold(event.space, event.page_no);
     cell = hash_get_nth_cell(event.lock_hash, hash_calc_hash(rec_fold, event.lock_hash));
@@ -425,8 +425,12 @@ swap_locks_if_beneficial(
     update_trx_finish_time(read_locks, lock1, 1);
     update_trx_finish_time(read_locks, lock2, -1);
     
-    new_release_time = total_finish_time();
-    if (new_release_time < original_release_time) {
+    new_finish_time = total_finish_time();
+
+    TraceTool::get_instance()->time_so_far.push_back(original_release_time);
+    TraceTool::get_instance()->trx_ids.push_back(new_release_time);
+
+    if (new_finish_time < original_finish_time) {
         return true;
     }
     
@@ -443,9 +447,6 @@ swap_locks_if_beneficial(
     
     update_trx_finish_time(read_locks, lock1, -1);
     update_trx_finish_time(read_locks, lock2, 1);
-    
-    TraceTool::get_instance()->time_so_far.push_back(original_release_time);
-    TraceTool::get_instance()->trx_ids.push_back(new_release_time);
 
     return false;
 }
