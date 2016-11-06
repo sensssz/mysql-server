@@ -458,12 +458,12 @@ void TraceTool::write_log()
 //    remaining << "rem" << trx_id << "=" << (latency - time_so_far[index]) << endl;
 //  }
 //  remaining.close();
-//  ofstream num_locks("latency/num_locks");
-//  for (ulint index = 0; index < time_so_far.size(); ++index) {
-//    num_locks << time_so_far[index] << endl;
-//  }
-//  num_locks.close();
-//  time_so_far.clear();
+  ofstream num_swaps("latency/num_swaps");
+  for (ulint index = 0; index < time_so_far.size(); ++index) {
+    num_swaps << time_so_far[index] << endl;
+  }
+  num_swaps.close();
+  time_so_far.clear();
   
   write_latency("latency/");
   ofstream num_trans_file("latency/num_deadlocks");
