@@ -347,7 +347,6 @@ process_lock_sys_change_event(
         trx_sys_mutex_exit();
         lock_mutex_exit();
     }
-    TraceTool::get_instance()->time_so_far.push_back(num_swaps);
 }
 
 
