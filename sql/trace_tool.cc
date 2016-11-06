@@ -466,15 +466,21 @@ void TraceTool::write_log()
   //  remaining.close();
   ofstream list_size("latency/list_size");
   for (ulint index = 0; index < candidate_list_size.size(); ++index) {
-    list_size << num_trx[index] << "," << read_list_size[index] << "," << candidate_list_size[index] << endl;
+    list_size << read_list_size[index] << "," << candidate_list_size[index] << endl;
   }
   list_size.close();
   
-  ofstream release_time("latency/finish_time");
+  ofstream finish_time("latency/finish_time");
   for (ulint index = 0; index < original_finish_time.size(); ++index) {
-    release_time << original_finish_time[index] << "," << new_finish_time[index] << endl;
+    finish_time << original_finish_time[index] << "," << new_finish_time[index] << endl;
   }
-  release_time.close();
+  finish_time.close();
+  
+  ofstream num_trx_file("latency/num_trx");
+  for (ulint index = 0; index < num_trx.size(); ++index) {
+    num_trx_file << num_trx[index] << endl;
+  }
+  num_trx_file.close();
   
   num_trx.clear();
   read_list_size.clear();
