@@ -326,7 +326,7 @@ process_lock_sys_change_event(
             has_seen_read_lock = has_seen_read_lock || lock_get_mode(lock) == LOCK_S;
         }
     }
-    if (locks_on_rec.size() > NUM_SWAPS || true) {
+    if (locks_on_rec.size() >= NUM_SWAPS || true) {
         index = locks_on_rec.size() - 2;
         num_swaps = 0;
         while (index >= 0) {
@@ -347,6 +347,7 @@ process_lock_sys_change_event(
         trx_sys_mutex_exit();
         lock_mutex_exit();
     }
+    TraceTool::get_instance()->candidate_list_size.push_back(locks_on_rec.size());
 }
 
 

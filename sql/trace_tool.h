@@ -107,8 +107,9 @@ public:
                                              transactions*/
     static pthread_mutex_t var_mutex;
     
-    vector<long> time_so_far;
-    vector<long> trx_ids;
+    vector<int> candidate_list_size;
+    vector<int> original_release_time;
+    vector<int> new_release_time;
     
     ulint num_waits;
     ulint total_locks;
