@@ -161,6 +161,9 @@ TraceTool::TraceTool() : function_times()
   transaction_start_times.push_back(0);
   transaction_types.reserve(500000);
   transaction_types.push_back(NONE);
+  
+  num_trx.reserve(1000000);
+  read_list_size.reserve(1000000);
   candidate_list_size.reserve(1000000);
   original_finish_time.reserve(1000000);
   new_finish_time.reserve(1000000);
@@ -467,12 +470,13 @@ void TraceTool::write_log()
   }
   list_size.close();
   
-  ofstream release_time("latency/release_time");
+  ofstream release_time("latency/finish_time");
   for (ulint index = 0; index < original_finish_time.size(); ++index) {
     release_time << original_finish_time[index] << "," << new_finish_time[index] << endl;
   }
   release_time.close();
   
+  num_trx.clear();
   read_list_size.clear();
   candidate_list_size.clear();
   original_finish_time.clear();
