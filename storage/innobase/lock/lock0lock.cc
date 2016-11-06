@@ -302,7 +302,6 @@ process_lock_sys_change_event(
     lock_t*     lock;
     lock_t*     lock1;
     lock_t*     lock2;
-    int         num_failed;
     bool        has_seen_read_lock;
     std::vector<lock_t*>    read_locks_on_rec;
     std::vector<lock_t*>    locks_on_rec;
@@ -326,7 +325,10 @@ process_lock_sys_change_event(
             has_seen_read_lock = has_seen_read_lock || lock_get_mode(lock) == LOCK_S;
         }
     }
-    if (locks_on_rec.size() >= NUM_SWAPS || true) {
+    TraceTool::get_instance()->read_list_size.push_back(read_locks_on_rec.size());
+    TraceTool::get_instance()->candidate_list_size.push_back(locks_on_rec.size());
+    if ((locks_on_rec.size() >= NUM_SWAPS || true)
+        && locks_on_rec.size() >= 2) {
         index = locks_on_rec.size() - 2;
         num_swaps = 0;
         while (index >= 0) {
@@ -347,7 +349,6 @@ process_lock_sys_change_event(
         trx_sys_mutex_exit();
         lock_mutex_exit();
     }
-    TraceTool::get_instance()->candidate_list_size.push_back(locks_on_rec.size());
 }
 
 
