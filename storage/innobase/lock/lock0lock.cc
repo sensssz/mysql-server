@@ -428,8 +428,8 @@ swap_locks_if_beneficial(
     
     new_finish_time = total_finish_time();
 
-    TraceTool::get_instance()->time_so_far.push_back(original_finish_time);
-    TraceTool::get_instance()->trx_ids.push_back(new_finish_time);
+    TraceTool::get_instance()->original_finish_time.push_back(original_finish_time);
+    TraceTool::get_instance()->new_finish_time.push_back(new_finish_time);
 
     if (new_finish_time < original_finish_time) {
         return true;

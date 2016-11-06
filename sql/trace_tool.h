@@ -108,8 +108,8 @@ public:
     static pthread_mutex_t var_mutex;
     
     vector<int> candidate_list_size;
-    vector<int> original_release_time;
-    vector<int> new_release_time;
+    vector<int> original_finish_time;
+    vector<int> new_finish_time;
     
     ulint num_waits;
     ulint total_locks;

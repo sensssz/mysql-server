@@ -461,13 +461,13 @@ void TraceTool::write_log()
 //  }
 //  remaining.close();
   ofstream release_time("latency/release_time");
-  for (ulint index = 0; index < original_release_time.size(); ++index) {
-    release_time << candidate_list_size[index] << "," << original_release_time[index] << "," << new_release_time[index] << endl;
+  for (ulint index = 0; index < original_finish_time.size(); ++index) {
+    release_time << candidate_list_size[index] << "," << original_finish_time[index] << "," << new_finish_time[index] << endl;
   }
   release_time.close();
   candidate_list_size.clear();
-  original_release_time.clear();
-  new_release_time.clear();
+  original_finish_time.clear();
+  new_finish_time.clear();
   
   write_latency("latency/");
   ofstream num_trans_file("latency/num_deadlocks");
