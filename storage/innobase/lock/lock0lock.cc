@@ -353,21 +353,21 @@ process_lock_sys_change_event(
 
 static
 long
-total_release_time()
+total_finish_time()
 {
-    long    total_release_time;
+    long    total_finish_time;
     trx_t*  trx;
     
     ut_ad(trx_sys_mutex_own());
     
-    total_release_time = 0;
+    total_finish_time = 0;
     for (trx = UT_LIST_GET_FIRST(trx_sys->mysql_trx_list);
          trx != NULL;
          trx = UT_LIST_GET_NEXT(trx_list, trx)) {
-        total_release_time += trx->finish_time;
+        total_finish_time += trx->finish_time;
     }
     
-    return total_release_time;
+    return total_finish_time;
 }
 
 
@@ -391,7 +391,7 @@ swap_locks_if_beneficial(
 
     ut_ad(lock_mutex_own());
 
-    original_release_time = total_release_time();
+    original_release_time = total_finish_time();
     
     rec_fold = lock_rec_fold(event.space, event.page_no);
     cell = hash_get_nth_cell(event.lock_hash, hash_calc_hash(rec_fold, event.lock_hash));
@@ -426,7 +426,7 @@ swap_locks_if_beneficial(
     update_trx_finish_time(read_locks, lock1, 1);
     update_trx_finish_time(read_locks, lock2, -1);
     
-    new_release_time = total_release_time();
+    new_release_time = total_finish_time();
     if (new_release_time < original_release_time) {
         return true;
     }
