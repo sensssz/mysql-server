@@ -269,11 +269,11 @@ submit_lock_sys_change(
     event.space = space;
     event.page_no = page_no;
     event.heap_no = heap_no;
-//    process_lock_sys_change_event(event, true);
-    lock_sys_change_mutex_enter();
-    lock_sys_change->event_queue.push_back(std::move(event));
-    pthread_cond_signal(&lock_sys_change->cond);
-    lock_sys_change_mutex_exit();
+    process_lock_sys_change_event(event, true);
+//    lock_sys_change_mutex_enter();
+//    lock_sys_change->event_queue.push_back(std::move(event));
+//    pthread_cond_signal(&lock_sys_change->cond);
+//    lock_sys_change_mutex_exit();
 }
 
 static
@@ -327,8 +327,7 @@ process_lock_sys_change_event(
     }
     TraceTool::get_instance()->read_list_size.push_back(read_locks_on_rec.size());
     TraceTool::get_instance()->candidate_list_size.push_back(locks_on_rec.size());
-    if ((locks_on_rec.size() >= NUM_SWAPS || true)
-        && locks_on_rec.size() >= 2) {
+    if (locks_on_rec.size() >= 2) {
         index = locks_on_rec.size() - 2;
         num_swaps = 0;
         while (index >= 0) {
@@ -345,6 +344,7 @@ process_lock_sys_change_event(
             --index;
         }
     }
+    TraceTool::get_instance()->num_swaps(num_swaps);
     if (!lock_acquired) {
         trx_sys_mutex_exit();
         lock_mutex_exit();

@@ -162,11 +162,6 @@ TraceTool::TraceTool() : function_times()
   transaction_types.reserve(500000);
   transaction_types.push_back(NONE);
   
-  num_trx.reserve(1000000);
-  read_list_size.reserve(1000000);
-  candidate_list_size.reserve(1000000);
-  original_finish_time.reserve(1000000);
-  new_finish_time.reserve(1000000);
   num_waits = 0;
   total_locks = 0;
   
@@ -465,23 +460,34 @@ void TraceTool::write_log()
 //  }
   //  remaining.close();
   ofstream list_size("latency/list_size");
-  for (ulint index = 0; index < candidate_list_size.size(); ++index) {
-    list_size << read_list_size[index] << "," << candidate_list_size[index] << endl;
+  for (auto read_iter = read_list_size.begin(), candidate_iter = candidate_list_size.begin();
+       read_iter != read_list_size.end();
+       ++read_iter, ++candidate_iter) {
+    list_size << *read_iter << "," << *candidate_iter << endl;
   }
   list_size.close();
   
   ofstream finish_time("latency/finish_time");
-  for (ulint index = 0; index < original_finish_time.size(); ++index) {
-    finish_time << original_finish_time[index] << "," << new_finish_time[index] << endl;
+  for (auto original_iter = original_finish_time.begin(), new_iter = new_finish_time.begin();
+       original_iter != original_finish_time.end();
+       ++original_iter, ++new_iter) {
+    finish_time << *original_iter << "," << *new_iter << endl;
   }
   finish_time.close();
   
   ofstream num_trx_file("latency/num_trx");
-  for (ulint index = 0; index < num_trx.size(); ++index) {
-    num_trx_file << num_trx[index] << endl;
+  for (auto trx : num_trx) {
+    num_trx_file << trx << endl;
   }
   num_trx_file.close();
   
+  ofstream num_swap_file("latency/num_swap");
+  for (auto swap : num_swaps) {
+    num_swap_file << swap << endl;
+  }
+  num_swap_file.close();
+  
+  num_swaps.clear();
   num_trx.clear();
   read_list_size.clear();
   candidate_list_size.clear();

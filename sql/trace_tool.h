@@ -107,11 +107,12 @@ public:
                                              transactions*/
     static pthread_mutex_t var_mutex;
     
-    vector<int> num_trx;
-    vector<int> read_list_size;
-    vector<int> candidate_list_size;
-    vector<int> original_finish_time;
-    vector<int> new_finish_time;
+    list<int> num_swaps;
+    list<int> num_trx;
+    list<int> read_list_size;
+    list<int> candidate_list_size;
+    list<int> original_finish_time;
+    list<int> new_finish_time;
     
     ulint num_waits;
     ulint total_locks;
