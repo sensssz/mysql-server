@@ -302,6 +302,7 @@ process_lock_sys_change_event(
     lock_t*     lock;
     lock_t*     lock1;
     lock_t*     lock2;
+    int         num_failed;
     bool        has_seen_read_lock;
     std::vector<lock_t*>    read_locks_on_rec;
     std::vector<lock_t*>    locks_on_rec;
@@ -443,6 +444,9 @@ swap_locks_if_beneficial(
     
     update_trx_finish_time(read_locks, lock1, -1);
     update_trx_finish_time(read_locks, lock2, 1);
+    
+    TraceTool::get_instance()->time_so_far.push_back(original_release_time);
+    TraceTool::get_instance()->trx_ids.push_back(new_release_time);
 
     return false;
 }

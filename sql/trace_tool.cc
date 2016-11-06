@@ -161,6 +161,8 @@ TraceTool::TraceTool() : function_times()
   transaction_start_times.push_back(0);
   transaction_types.reserve(500000);
   transaction_types.push_back(NONE);
+  time_so_far.reserve(1000000);
+  trx_ids.reserve(1000000);
   num_waits = 0;
   total_locks = 0;
   
@@ -458,12 +460,13 @@ void TraceTool::write_log()
 //    remaining << "rem" << trx_id << "=" << (latency - time_so_far[index]) << endl;
 //  }
 //  remaining.close();
-  ofstream num_swaps("latency/num_swaps");
+  ofstream release_time("latency/release_time");
   for (ulint index = 0; index < time_so_far.size(); ++index) {
-    num_swaps << time_so_far[index] << endl;
+    release_time << time_so_far[index] << "," << trx_ids[index] << endl;
   }
-  num_swaps.close();
+  release_time.close();
   time_so_far.clear();
+  trx_ids.clear();
   
   write_latency("latency/");
   ofstream num_trans_file("latency/num_deadlocks");
