@@ -161,8 +161,9 @@ TraceTool::TraceTool() : function_times()
   transaction_start_times.push_back(0);
   transaction_types.reserve(500000);
   transaction_types.push_back(NONE);
-  time_so_far.reserve(1000000);
-  trx_ids.reserve(1000000);
+  candidate_list_size.reserve(1000000);
+  original_finish_time.reserve(1000000);
+  new_finish_time.reserve(1000000);
   num_waits = 0;
   total_locks = 0;
   
