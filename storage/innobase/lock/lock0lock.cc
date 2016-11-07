@@ -344,7 +344,7 @@ process_lock_sys_change_event(
             --index;
         }
     }
-    TraceTool::get_instance()->num_swaps(num_swaps);
+    TraceTool::get_instance()->num_swaps.push_back(num_swaps);
     if (!lock_acquired) {
         trx_sys_mutex_exit();
         lock_mutex_exit();
