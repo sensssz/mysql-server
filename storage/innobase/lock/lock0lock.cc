@@ -325,8 +325,8 @@ process_lock_sys_change_event(
             has_seen_read_lock = has_seen_read_lock || lock_get_mode(lock) == LOCK_S;
         }
     }
-    // TraceTool::get_instance()->read_list_size.push_back(read_locks_on_rec.size());
-    // TraceTool::get_instance()->candidate_list_size.push_back(locks_on_rec.size());
+    TraceTool::get_instance()->read_list_size.push_back(read_locks_on_rec.size());
+    TraceTool::get_instance()->candidate_list_size.push_back(locks_on_rec.size());
     if ((locks_on_rec.size() >= NUM_SWAPS || true)
         && locks_on_rec.size() >= 2) {
         index = locks_on_rec.size() - 2;
@@ -372,7 +372,7 @@ total_finish_time()
         ++num_trx;
     }
 
-    // TraceTool::get_instance()->num_trx.push_back(num_trx);
+    TraceTool::get_instance()->num_trx.push_back(num_trx);
 
     return total_finish_time;
 }
@@ -435,8 +435,8 @@ swap_locks_if_beneficial(
     
     new_finish_time = total_finish_time();
 
-    // TraceTool::get_instance()->original_finish_time.push_back(original_finish_time);
-    // TraceTool::get_instance()->new_finish_time.push_back(new_finish_time);
+    TraceTool::get_instance()->original_finish_time.push_back(original_finish_time);
+    TraceTool::get_instance()->new_finish_time.push_back(new_finish_time);
 
     if (new_finish_time < original_finish_time) {
         return true;
