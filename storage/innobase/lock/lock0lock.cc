@@ -1516,7 +1516,8 @@ RecLock::lock_alloc(
 
 	lock_rec_set_nth_bit(lock, rec_id.m_heap_no);
     
-    lock->batch_scheduled = false;
+  lock->batch_scheduled = false;
+  lock->hash = NULL;
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK);
 
