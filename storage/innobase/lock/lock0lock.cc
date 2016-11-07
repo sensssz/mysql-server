@@ -76,7 +76,7 @@ static const ulint	TABLE_LOCK_CACHE = 8;
 static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
 /** Code section for swapping. */
-const int NUM_SWAPS = 3;
+const int NUM_SWAPS = INT_MAX;
 
 /** Code section for swapping. */
 struct lock_sys_change_event_t{
