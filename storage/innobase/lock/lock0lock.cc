@@ -327,9 +327,9 @@ process_lock_sys_change_event(
     }
     TraceTool::get_instance()->read_list_size.push_back(read_locks_on_rec.size());
     TraceTool::get_instance()->candidate_list_size.push_back(locks_on_rec.size());
+    num_swaps = 0;
     if (locks_on_rec.size() >= 2) {
         index = locks_on_rec.size() - 2;
-        num_swaps = 0;
         while (index >= 0) {
             if (num_swaps == NUM_SWAPS) {
                 break;
