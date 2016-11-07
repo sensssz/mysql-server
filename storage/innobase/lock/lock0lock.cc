@@ -2899,6 +2899,8 @@ lock_rec_dequeue_from_page(
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
             auto &read_chunk = read_chunks[heap_no];
+            TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
+            TraceTool::get_instance()->num_write_locks.push_back(write_locks[heap_no].size());
             sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_subtree_size);
             while (read_chunk.size() > CHUNK_SIZE) {
                 read_chunk.pop_back();
@@ -4761,6 +4763,8 @@ released:
                 write_locks.push_back(lock);
             }
         }
+        TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
+        TraceTool::get_instance()->num_write_locks.push_back(write_locks.size());
         sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_subtree_size);
         while (read_chunk.size() > CHUNK_SIZE) {
             read_chunk.pop_back();

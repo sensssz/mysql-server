@@ -161,6 +161,8 @@ TraceTool::TraceTool() : function_times()
   transaction_start_times.push_back(0);
   transaction_types.reserve(500000);
   transaction_types.push_back(NONE);
+  num_read_locks.reserve(1000000);
+  num_write_locks.reserve(1000000);
   num_waits = 0;
   total_locks = 0;
   
@@ -454,20 +456,18 @@ void TraceTool::write_latency(string dir)
 
 void TraceTool::write_log()
 {
-//  ofstream remaining("remaining");
-//  for (ulint index = 0; index < time_so_far.size(); ++index)
-//  {
-//    long trx_id = trx_ids[index];
-//    long latency = function_times.back()[trx_id];
-//    remaining << "rem" << trx_id << "=" << (latency - time_so_far[index]) << endl;
-//  }
-//  remaining.close();
+  ofstream num_locks("num_locks");
+  for (ulint index = 0; index < num_read_locks.size(); ++index)
+  {
+    num_locks << num_read_locks[index] << "," << num_write_locks[index] << endl;
+  }
+  num_locks.close();
 //  ofstream num_locks("latency/num_locks");
-//  for (ulint index = 0; index < time_so_far.size(); ++index) {
-//    num_locks << time_so_far[index] << endl;
+//  for (ulint index = 0; index < num_read_locks.size(); ++index) {
+//    num_locks << num_read_locks[index] << endl;
 //  }
 //  num_locks.close();
-//  time_so_far.clear();
+//  num_read_locks.clear();
   
   write_latency("latency/");
   ofstream num_deadlock_file("latency/num_deadlocks");
