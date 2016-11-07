@@ -269,11 +269,11 @@ submit_lock_sys_change(
     event.space = space;
     event.page_no = page_no;
     event.heap_no = heap_no;
-    process_lock_sys_change_event(event, true);
-//    lock_sys_change_mutex_enter();
-//    lock_sys_change->event_queue.push_back(std::move(event));
-//    pthread_cond_signal(&lock_sys_change->cond);
-//    lock_sys_change_mutex_exit();
+//    process_lock_sys_change_event(event, true);
+    lock_sys_change_mutex_enter();
+    lock_sys_change->event_queue.push_back(std::move(event));
+    pthread_cond_signal(&lock_sys_change->cond);
+    lock_sys_change_mutex_exit();
 }
 
 static
