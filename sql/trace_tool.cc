@@ -456,7 +456,7 @@ void TraceTool::write_latency(string dir)
 
 void TraceTool::write_log()
 {
-  ofstream num_locks("num_locks");
+  ofstream num_locks("latency/num_locks");
   for (ulint index = 0; index < num_read_locks.size(); ++index)
   {
     num_locks << num_read_locks[index] << "," << num_write_locks[index] << endl;
