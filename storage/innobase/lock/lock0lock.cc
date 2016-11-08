@@ -2394,10 +2394,9 @@ lock_rec_has_to_wait_granted(
 		const byte*	p = (const byte*) &lock[1];
 
 		if (!lock_get_wait(lock)
-            && !lock->batch_scheduled
-            && heap_no < lock_rec_get_n_bits(lock)
-		    && (p[bit_offset] & bit_mask)
-		    && lock_has_to_wait(wait_lock, lock)) {
+        && !lock->batch_scheduled
+        && heap_no < lock_rec_get_n_bits(lock)
+		    && (p[bit_offset] & bit_mask)) {
 
 			return(lock);
 		}
@@ -2808,6 +2807,10 @@ compare_locks_by_subtree_size(
     lock_t* lock1,
     lock_t* lock2)
 {
+    ut_a(lock1 != NULL);
+    ut_a(lock2 != NULL);
+    ut_a(lock1->trx != NULL);
+    ut_a(lock2->trx != NULL);
     return lock2->trx->sub_tree_size - lock1->trx->sub_tree_size;
 }
 
@@ -2900,9 +2903,9 @@ lock_rec_dequeue_from_page(
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
             auto &read_chunk = read_chunks[heap_no];
-            TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
-            TraceTool::get_instance()->num_write_locks.push_back(write_locks[heap_no].size());
             sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_subtree_size);
+//            TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
+//            TraceTool::get_instance()->num_write_locks.push_back(write_locks[heap_no].size());
             while (read_chunk.size() > CHUNK_SIZE) {
                 read_chunk.pop_back();
             }
