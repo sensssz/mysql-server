@@ -1984,8 +1984,8 @@ queue is itself waiting roll it back, also do a deadlock check and resolve.
 dberr_t
 RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 {
-    TraceTool::path_count = 42;
-    TRACE_START();
+  TraceTool::path_count = 42;
+  TRACE_START();
 	ut_ad(lock_mutex_own());
 	ut_ad(m_trx == thr_get_trx(m_thr));
 	ut_ad(trx_mutex_own(m_trx));
@@ -2006,28 +2006,28 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	/* Attempt to jump over the low priority waiting locks. */
 	if (high_priority && jump_queue(lock, wait_for)) {
 
-        /* Lock is granted */
-        TRACE_END(1);
-        TraceTool::path_count = 0;
+    /* Lock is granted */
+    TRACE_END(1);
+    TraceTool::path_count = 0;
 		return(DB_SUCCESS);
 	}
 
 	ut_ad(lock_get_wait(lock));
-
-    dberr_t	err = deadlock_check(lock);
+  
+  TRACE_END(1);
+  TraceTool::path_count = 0;
+  dberr_t	err = deadlock_check(lock);
     
-    if (err == DB_DEADLOCK || err == DB_SUCCESS_LOCKED_REC) {
-        TraceTool::get_instance()->total_locks++;
-    }
+  if (err == DB_DEADLOCK || err == DB_SUCCESS_LOCKED_REC) {
+    TraceTool::get_instance()->total_locks++;
+  }
 
 	ut_ad(trx_mutex_own(m_trx));
 
 	/* m_trx->mysql_thd is NULL if it's an internal trx. So current_thd is used */
 	if (err == DB_LOCK_WAIT) {
 		thd_report_row_lock_wait(current_thd, wait_for->trx->mysql_thd);
-    }
-    TRACE_END(1);
-    TraceTool::path_count = 0;
+  }
 	return(err);
 }
 

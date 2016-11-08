@@ -34,6 +34,7 @@ Created 25/5/2010 Sunny Bains
 #include "row0mysql.h"
 #include "srv0start.h"
 #include "lock0priv.h"
+#include "trace_tool.h"
 
 /*********************************************************************//**
 Print the contents of the lock_sys_t::waiting_threads array. */
@@ -310,7 +311,9 @@ lock_wait_suspend_thread(
 		thd_wait_begin(trx->mysql_thd, THD_WAIT_TABLE_LOCK);
 	}
 
+  TRACE_START();
 	os_event_wait(slot->event);
+  TRACE_END(3);
 
 	thd_wait_end(trx->mysql_thd);
 
