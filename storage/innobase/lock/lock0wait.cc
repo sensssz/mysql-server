@@ -311,9 +311,12 @@ lock_wait_suspend_thread(
 		thd_wait_begin(trx->mysql_thd, THD_WAIT_TABLE_LOCK);
 	}
 
+  
+  TraceTool::path_count = 42;
   TRACE_START();
 	os_event_wait(slot->event);
   TRACE_END(3);
+  TraceTool::path_count = 0;
 
 	thd_wait_end(trx->mysql_thd);
 

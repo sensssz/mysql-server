@@ -2015,8 +2015,8 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	ut_ad(lock_get_wait(lock));
   
   TRACE_END(1);
-  TraceTool::path_count = 0;
   dberr_t	err = deadlock_check(lock);
+  TraceTool::path_count = 0;
     
   if (err == DB_DEADLOCK || err == DB_SUCCESS_LOCKED_REC) {
     TraceTool::get_instance()->total_locks++;
