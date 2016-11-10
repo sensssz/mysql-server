@@ -4255,7 +4255,7 @@ end_with_restore_list:
                        lex->tx_release != TVL_NO));
     bool commit = trans_commit(thd);
     TraceTool::is_commit = true;
-    TraceTool::commit_successful = commit;
+    TraceTool::commit_successful = !commit;
     if (commit)
       goto error;
     thd->mdl_context.release_transactional_locks();
