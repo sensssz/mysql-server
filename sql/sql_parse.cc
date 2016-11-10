@@ -1192,8 +1192,6 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
 #if defined(ENABLED_PROFILING)
   thd->profiling.start_new_query();
 #endif
-    
-  TraceTool::get_instance()->start_new_query();
 
   /* DTRACE instrumentation, begin */
   MYSQL_COMMAND_START(thd->thread_id(), command,
@@ -4255,7 +4253,7 @@ end_with_restore_list:
                       (thd->variables.completion_type == 2 &&
                        lex->tx_release != TVL_NO));
     bool commit = trans_commit(thd);
-    if (!TraceTool::is_commit)
+    if (!commit)
     {
       TraceTool::is_commit = true;
       TraceTool::commit_successful = false;
@@ -4283,6 +4281,7 @@ end_with_restore_list:
   case SQLCOM_ROLLBACK:
   {
     TraceTool::is_commit = true;
+    TraceTool::commit_successful = false;
     DBUG_ASSERT(thd->lock == NULL ||
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
     bool tx_chain= (lex->tx_chain == TVL_YES ||
@@ -4292,11 +4291,6 @@ end_with_restore_list:
                       (thd->variables.completion_type == 2 &&
                        lex->tx_release != TVL_NO));
     bool rollback = trans_rollback(thd);
-    if (!TraceTool::is_commit)
-    {
-      TraceTool::is_commit = true;
-      TraceTool::commit_successful = false;
-    }
     if (rollback)
       goto error;
     thd->mdl_context.release_transactional_locks();
