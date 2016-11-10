@@ -182,8 +182,8 @@ void *TraceTool::check_write_log(void *arg)
   while (true)
   {
     sleep(5);
-    instance->log_file << "Checking..." << endl;
     timespec now = get_time();
+    instance->log_file << now.tv_sec - global_last_query.tv_sec << "," << transaction_id << endl;
     if (now.tv_sec - global_last_query.tv_sec >= 5 && transaction_id > 0)
     {
       instance->log_file << "Writing..." << endl;
