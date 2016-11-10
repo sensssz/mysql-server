@@ -1192,6 +1192,8 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
 #if defined(ENABLED_PROFILING)
   thd->profiling.start_new_query();
 #endif
+  
+  TraceTool::get_instance()->start_new_query();
 
   /* DTRACE instrumentation, begin */
   MYSQL_COMMAND_START(thd->thread_id(), command,
