@@ -4280,8 +4280,6 @@ end_with_restore_list:
   }
   case SQLCOM_ROLLBACK:
   {
-    TraceTool::is_commit = true;
-    TraceTool::commit_successful = false;
     DBUG_ASSERT(thd->lock == NULL ||
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
     bool tx_chain= (lex->tx_chain == TVL_YES ||
@@ -4291,6 +4289,8 @@ end_with_restore_list:
                       (thd->variables.completion_type == 2 &&
                        lex->tx_release != TVL_NO));
     bool rollback = trans_rollback(thd);
+    TraceTool::is_commit = true;
+    TraceTool::commit_successful = false;
     if (rollback)
       goto error;
     thd->mdl_context.release_transactional_locks();
