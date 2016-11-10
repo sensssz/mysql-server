@@ -361,10 +361,6 @@ void TraceTool::add_record(int function_index, long duration)
 
 void TraceTool::write_latency(string dir)
 {
-  if (transaction_start_times.size() < 200) {
-    function_times.clear();
-    return;
-  }
   ofstream tpcc_log;
   ofstream new_order_log;
   ofstream payment_log;
