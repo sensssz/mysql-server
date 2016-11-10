@@ -4243,7 +4243,6 @@ end_with_restore_list:
     break;
   case SQLCOM_COMMIT:
   {
-    TraceTool::is_commit = true;
     DBUG_ASSERT(thd->lock == NULL ||
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
     bool tx_chain= (lex->tx_chain == TVL_YES ||
@@ -4253,11 +4252,8 @@ end_with_restore_list:
                       (thd->variables.completion_type == 2 &&
                        lex->tx_release != TVL_NO));
     bool commit = trans_commit(thd);
-    if (!commit)
-    {
-      TraceTool::is_commit = true;
-      TraceTool::commit_successful = false;
-    }
+    TraceTool::is_commit = true;
+    TraceTool::commit_successful = commit;
     if (commit)
       goto error;
     thd->mdl_context.release_transactional_locks();

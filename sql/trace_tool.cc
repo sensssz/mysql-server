@@ -182,9 +182,11 @@ void *TraceTool::check_write_log(void *arg)
   while (true)
   {
     sleep(5);
+    instance->log_file << "Checking..." << endl;
     timespec now = get_time();
     if (now.tv_sec - global_last_query.tv_sec >= 5 && transaction_id > 0)
     {
+      instance->log_file << "Writing..." << endl;
       /* Create a back up of the debug log file in case it's overwritten. */
       std::ifstream src("logs/trace.log", std::ios::binary);
       std::ofstream dst("logs/trace.bak", std::ios::binary);
