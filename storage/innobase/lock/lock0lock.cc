@@ -2878,8 +2878,10 @@ lock_rec_dequeue_from_page(
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
     MONITOR_DEC(MONITOR_NUM_RECLOCK);
   
-  timespec now = TraceTool::get_time();
-  TraceTool::get_instance()->lock_held_time.push_back(TraceTool::difftime(in_lock->granted_time, now));
+  if (lock_get_mode(in_lock) == LOCK_S) {
+    timespec now = TraceTool::get_time();
+    TraceTool::get_instance()->lock_held_time.push_back(TraceTool::difftime(in_lock->granted_time, now));
+  }
   
     if (innodb_lock_schedule_algorithm
         == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
