@@ -2473,7 +2473,7 @@ lock_grant(
     
   lock_reset_lock_and_trx_wait(in_lock);
   
-  lock->granted_time = TraceTool::get_time();
+  in_lock->granted_time = TraceTool::get_time();
 
     if (!owns_trx_mutex) {
         trx_mutex_enter(in_lock->trx);
