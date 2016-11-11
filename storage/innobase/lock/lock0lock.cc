@@ -2011,6 +2011,7 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
     /* Lock is granted */
     TRACE_END(1);
     TraceTool::path_count = 0;
+    lock->granted_time = TraceTool::get_time();
 		return(DB_SUCCESS);
 	}
 
