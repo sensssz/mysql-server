@@ -2880,7 +2880,10 @@ lock_rec_dequeue_from_page(
   
   if (lock_get_mode(in_lock) == LOCK_S) {
     timespec now = TraceTool::get_time();
-    TraceTool::get_instance()->lock_held_time.push_back(TraceTool::difftime(in_lock->granted_time, now));
+    TraceTool::get_instance()->read_lock_held_time.push_back(TraceTool::difftime(in_lock->granted_time, now));
+  } else if (lock_get_mode(in_lock) == LOCK_X) {
+    timespec now = TraceTool::get_time();
+    TraceTool::get_instance()->write_lock_held_time.push_back(TraceTool::difftime(in_lock->granted_time, now));
   }
   
     if (innodb_lock_schedule_algorithm

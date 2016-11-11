@@ -109,7 +109,8 @@ public:
     
     list<long> num_read_locks;
     list<long> num_write_locks;
-    list<long> lock_held_time;
+    list<long> read_lock_held_time;
+    list<long> write_lock_held_time;
     
     ulint num_waits;
     ulint total_locks;
