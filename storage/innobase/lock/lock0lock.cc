@@ -1789,7 +1789,9 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 	if (wait_lock) {
 		lock_set_lock_and_trx_wait(lock, lock->trx);
-	}
+  } else {
+    lock->granted_time = TraceTool::get_time();
+  }
 
 	UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, lock);
 }
@@ -2469,7 +2471,9 @@ lock_grant(
     ulint       heap_no = lock_rec_find_set_bit(in_lock);
     int         sub_tree_change = 0;
     
-	lock_reset_lock_and_trx_wait(in_lock);
+  lock_reset_lock_and_trx_wait(in_lock);
+  
+  lock->granted_time = TraceTool::get_time();
 
     if (!owns_trx_mutex) {
         trx_mutex_enter(in_lock->trx);
@@ -2872,7 +2876,10 @@ lock_rec_dequeue_from_page(
 
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
     MONITOR_DEC(MONITOR_NUM_RECLOCK);
-    
+  
+  timespec now = TraceTool::get_time();
+  TraceTool::lock_held_time.push_back(TraceTool::difftime(lock->granted_time, now));
+  
     if (innodb_lock_schedule_algorithm
         == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
         && !thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {

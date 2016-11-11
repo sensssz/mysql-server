@@ -161,8 +161,6 @@ TraceTool::TraceTool() : function_times()
   transaction_start_times.push_back(0);
   transaction_types.reserve(500000);
   transaction_types.push_back(NONE);
-  num_read_locks.reserve(1000000);
-  num_write_locks.reserve(1000000);
   num_waits = 0;
   total_locks = 0;
   
@@ -453,11 +451,19 @@ void TraceTool::write_latency(string dir)
 void TraceTool::write_log()
 {
   ofstream num_locks("latency/num_locks");
-  for (ulint index = 0; index < num_read_locks.size(); ++index)
+  for (auto read_iter = num_read_locks.begin(), write_iter = num_write_locks.begin();
+       read_iter != num_read_locks.end();
+       ++read_iter, ++write_iter)
   {
-    num_locks << num_read_locks[index] << "," << num_write_locks[index] << endl;
+    num_locks << *read_iter << "," << *write_iter << endl;
   }
   num_locks.close();
+  ofstream lock_held_time_file("latency/lock_held_time");
+  for (auto iter = lock_held_time.begin(); iter != lock_held_time.end(); ++iter)
+  {
+    lock_held_time_file << *iter << endl;
+  }
+  lock_held_time_file.close();
 //  ofstream num_locks("latency/num_locks");
 //  for (ulint index = 0; index < num_read_locks.size(); ++index) {
 //    num_locks << num_read_locks[index] << endl;

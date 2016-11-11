@@ -107,8 +107,9 @@ public:
                                              transactions*/
     static pthread_mutex_t var_mutex;
     
-    vector<long> num_read_locks;
-    vector<long> num_write_locks;
+    list<long> num_read_locks;
+    list<long> num_write_locks;
+    list<long> lock_held_time;
     
     ulint num_waits;
     ulint total_locks;
