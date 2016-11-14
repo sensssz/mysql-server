@@ -2898,6 +2898,8 @@ lock_rec_dequeue_from_page(
                                                     page_no);
              lock != NULL;
              lock = lock_rec_get_next_on_page(lock)) {
+          
+            ut_a(lock->trx);
             if (!lock_get_wait(lock)) {
                 continue;
             }
@@ -2913,26 +2915,10 @@ lock_rec_dequeue_from_page(
             }
         }
         for (auto heap_no : heap_nos) {
-          auto &locks = read_chunks[heap_no];
-          for (auto lock : locks) {
-            ut_a(lock != NULL);
-          }
-          
-        }
-      for (auto heap_no : heap_nos) {
-        auto &locks = write_locks[heap_no];
-        for (auto lock : locks) {
-          ut_a(lock != NULL);
-        }
-        
-      }
-        for (auto heap_no : heap_nos) {
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
             auto &read_chunk = read_chunks[heap_no];
-          if (read_chunk.size() > 0) {
             sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_subtree_size);
-          }
             TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
             TraceTool::get_instance()->num_write_locks.push_back(write_locks[heap_no].size());
             while (read_chunk.size() > CHUNK_SIZE) {
