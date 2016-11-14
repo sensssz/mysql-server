@@ -2913,6 +2913,20 @@ lock_rec_dequeue_from_page(
             }
         }
         for (auto heap_no : heap_nos) {
+          auto &locks = read_chunks[heap_no];
+          for (auto lock : locks) {
+            ut_a(lock != NULL);
+          }
+          
+        }
+      for (auto heap_no : heap_nos) {
+        auto &locks = write_locks[heap_no];
+        for (auto lock : locks) {
+          ut_a(lock != NULL);
+        }
+        
+      }
+        for (auto heap_no : heap_nos) {
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
             auto &read_chunk = read_chunks[heap_no];
