@@ -2898,8 +2898,6 @@ lock_rec_dequeue_from_page(
                                                     page_no);
              lock != NULL;
              lock = lock_rec_get_next_on_page(lock)) {
-          
-            ut_a(lock->trx);
             if (!lock_get_wait(lock)) {
                 continue;
             }
@@ -2914,6 +2912,22 @@ lock_rec_dequeue_from_page(
                 }
             }
         }
+        for (auto heap_no : heap_nos) {
+          auto &locks = read_chunks[heap_no];
+          for (auto lock : locks) {
+            ut_a(lock != NULL);
+            ut_a(lock->trx);
+          }
+          
+        }
+      for (auto heap_no : heap_nos) {
+        auto &locks = write_locks[heap_no];
+        for (auto lock : locks) {
+          ut_a(lock != NULL);
+          ut_a(lock->trx);
+        }
+        
+      }
         for (auto heap_no : heap_nos) {
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
