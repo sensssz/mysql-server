@@ -2973,6 +2973,7 @@ lock_rec_dequeue_from_page(
                 lock_grant(write_lock, false);
             }
         }
+        TraceTool::get_instance()->get_log() << endl;
     }
     
     for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
