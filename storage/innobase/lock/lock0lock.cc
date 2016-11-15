@@ -2929,7 +2929,7 @@ lock_rec_dequeue_from_page(
           
         }
         for (auto heap_no : heap_nos) {
-            TraceTool::get_log() << heap_no << endl;
+            TraceTool::get_instance()->get_log() << heap_no << endl;
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
             auto &read_chunk = read_chunks[heap_no];
