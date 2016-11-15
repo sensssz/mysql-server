@@ -2913,32 +2913,10 @@ lock_rec_dequeue_from_page(
             }
         }
         for (auto heap_no : heap_nos) {
-          vector<lock_t*> locks = read_chunks[heap_no];
-          TraceTool::get_instance()->get_log() << heap_no << "," << locks.size() << endl;
-          for (auto iter = locks.begin(); iter != locks.end(); ++iter) {
-            lock_t *lock = *iter;
-            ut_a(lock != NULL);
-            ut_a(lock->trx != NULL);
-            ut_a(lock->trx->sub_tree_size >= 0);
-          }
-          sort(locks.begin(), locks.end(), compare_locks_by_subtree_size);
-        }
-        for (auto heap_no : heap_nos) {
-          vector<lock_t*> locks = write_locks[heap_no];
-          TraceTool::get_instance()->get_log() << heap_no << "," << locks.size() << endl;
-          for (auto iter = locks.begin(); iter != locks.end(); ++iter) {
-            lock_t *lock = *iter;
-            ut_a(lock != NULL);
-            ut_a(lock->trx != NULL);
-            ut_a(lock->trx->sub_tree_size >= 0);
-          }
-//          sort(locks.begin(), locks.end(), compare_locks_by_subtree_size);
-        }
-        for (auto heap_no : heap_nos) {
             TraceTool::get_instance()->get_log() << heap_no << endl;
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
-            vector<lock_t*> read_chunk = read_chunks[heap_no];
+            auto &read_chunk = read_chunks[heap_no];
             sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_subtree_size);
             TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
             TraceTool::get_instance()->num_write_locks.push_back(write_locks[heap_no].size());
