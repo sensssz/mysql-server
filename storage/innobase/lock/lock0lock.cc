@@ -2918,6 +2918,7 @@ lock_rec_dequeue_from_page(
           for (auto lock : locks) {
             ut_a(lock != NULL);
             ut_a(lock->trx != NULL);
+            ut_a(lock->trx->sub_tree_size >= 0);
           }
           sort(locks.begin(), locks.end(), compare_locks_by_subtree_size);
         }
@@ -2927,6 +2928,7 @@ lock_rec_dequeue_from_page(
           for (auto lock : locks) {
             ut_a(lock != NULL);
             ut_a(lock->trx != NULL);
+            ut_a(lock->trx->sub_tree_size >= 0);
           }
           sort(locks.begin(), locks.end(), compare_locks_by_subtree_size);
         }
