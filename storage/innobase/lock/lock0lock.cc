@@ -2915,7 +2915,8 @@ lock_rec_dequeue_from_page(
         for (auto heap_no : heap_nos) {
           vector<lock_t*> locks = read_chunks[heap_no];
           TraceTool::get_instance()->get_log() << heap_no << "," << locks.size() << endl;
-          for (auto lock : locks) {
+          for (auto iter = locks.begin(); iter != locks.end(); ++iter) {
+            lock_t *lock = *iter;
             ut_a(lock != NULL);
             ut_a(lock->trx != NULL);
             ut_a(lock->trx->sub_tree_size >= 0);
@@ -2925,12 +2926,13 @@ lock_rec_dequeue_from_page(
         for (auto heap_no : heap_nos) {
           vector<lock_t*> locks = write_locks[heap_no];
           TraceTool::get_instance()->get_log() << heap_no << "," << locks.size() << endl;
-          for (auto lock : locks) {
+          for (auto iter = locks.begin(); iter != locks.end(); ++iter) {
+            lock_t *lock = *iter;
             ut_a(lock != NULL);
             ut_a(lock->trx != NULL);
             ut_a(lock->trx->sub_tree_size >= 0);
           }
-          sort(locks.begin(), locks.end(), compare_locks_by_subtree_size);
+//          sort(locks.begin(), locks.end(), compare_locks_by_subtree_size);
         }
         for (auto heap_no : heap_nos) {
             TraceTool::get_instance()->get_log() << heap_no << endl;
