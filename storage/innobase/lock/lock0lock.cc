@@ -2807,7 +2807,7 @@ lock_grant_and_move(
     }
 }
 
-int
+bool
 compare_locks_by_subtree_size(
     lock_t* lock1,
     lock_t* lock2)
@@ -2816,7 +2816,7 @@ compare_locks_by_subtree_size(
     ut_a(lock2 != NULL);
     ut_a(lock1->trx != NULL);
     ut_a(lock2->trx != NULL);
-    return lock2->trx->sub_tree_size - lock1->trx->sub_tree_size;
+    return lock1->trx->sub_tree_size > lock2->trx->sub_tree_size;
 }
 
 lock_t*
