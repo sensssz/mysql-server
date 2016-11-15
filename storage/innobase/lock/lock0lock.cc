@@ -2914,6 +2914,7 @@ lock_rec_dequeue_from_page(
         }
         for (auto heap_no : heap_nos) {
           auto &locks = read_chunks[heap_no];
+          TraceTool::get_instance()->get_log() << heap_no << "," << locks.size() << endl;
           for (auto lock : locks) {
             ut_a(lock != NULL);
             ut_a(lock->trx != NULL);
@@ -2922,6 +2923,7 @@ lock_rec_dequeue_from_page(
         }
         for (auto heap_no : heap_nos) {
           auto &locks = write_locks[heap_no];
+          TraceTool::get_instance()->get_log() << heap_no << "," << locks.size() << endl;
           for (auto lock : locks) {
             ut_a(lock != NULL);
             ut_a(lock->trx != NULL);
