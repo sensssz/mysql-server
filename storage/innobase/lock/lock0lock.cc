@@ -2913,7 +2913,7 @@ lock_rec_dequeue_from_page(
             }
         }
         for (auto heap_no : heap_nos) {
-          auto &locks = read_chunks[heap_no];
+          vector<lock_t*> locks = read_chunks[heap_no];
           TraceTool::get_instance()->get_log() << heap_no << "," << locks.size() << endl;
           for (auto lock : locks) {
             ut_a(lock != NULL);
@@ -2922,7 +2922,7 @@ lock_rec_dequeue_from_page(
           sort(locks.begin(), locks.end(), compare_locks_by_subtree_size);
         }
         for (auto heap_no : heap_nos) {
-          auto &locks = write_locks[heap_no];
+          vector<lock_t*> &locks = write_locks[heap_no];
           TraceTool::get_instance()->get_log() << heap_no << "," << locks.size() << endl;
           for (auto lock : locks) {
             ut_a(lock != NULL);
