@@ -2686,7 +2686,7 @@ count_blocking_locks(
   }
   for (lock_t *lock = UT_LIST_GET_FIRST(in_lock->trx->lock.trx_locks);
        lock != NULL;
-       lock = UT_LIST_GET_NEXT(trx_lists, lock)) {
+       lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
     if (!lock_get_wait(lock)) {
       blocking_locks += num_blocking_locks(in_lock, lock_hash);
     }
@@ -2790,6 +2790,7 @@ lock_rec_dequeue_from_page(
           TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
           TraceTool::get_instance()->num_write_locks.push_back(write_locks[heap_no].size());
           auto write_lock = find_lock_with_max_subtree_size(write_locks[heap_no]);
+        int select_result = 0;
           if (read_chunk.size() > 0 &&
               write_lock != NULL) {
             int read_blocking_locks = count_blocking_locks(read_chunk, lock_hash);
