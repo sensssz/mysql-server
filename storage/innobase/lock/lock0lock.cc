@@ -2658,7 +2658,7 @@ num_blocking_locks(
   space = in_lock->un_member.rec_lock.space;
   page_no = in_lock->un_member.rec_lock.page_no;
   
-  for (ulint heap_no = 0; heap_no < lock_rec_get_n_bits(lock); ++heap_no) {
+  for (ulint heap_no = 0; heap_no < lock_rec_get_n_bits(in_lock); ++heap_no) {
     if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
       continue;
     }
