@@ -1260,6 +1260,7 @@ struct trx_t {
 	FlushObserver*	flush_observer;	/*!< flush observer */
     
     lint        sub_tree_size;
+    long        num_locks;
 
 #ifdef UNIV_DEBUG
 	bool		is_dd_trx;	/*!< True if the transaction is used for

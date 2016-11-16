@@ -1794,6 +1794,7 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
   }
 
 	UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, lock);
+  ++lock->trx->num_locks;
 }
 
 /**
@@ -2819,6 +2820,14 @@ compare_locks_by_subtree_size(
     return lock1->trx->sub_tree_size > lock2->trx->sub_tree_size;
 }
 
+bool
+compare_locks_by_num_locks(
+    lock_t* lock1,
+    lock_t* lock2)
+{
+    return lock1->trx->num_locks > lock2->trx->num_locks;
+}
+
 lock_t*
 find_lock_with_max_subtree_size(
     std::vector<lock_t*>    &locks)
@@ -2876,7 +2885,7 @@ lock_rec_dequeue_from_page(
 	UT_LIST_REMOVE(trx_lock->trx_locks, in_lock);
 
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
-    MONITOR_DEC(MONITOR_NUM_RECLOCK);
+  MONITOR_DEC(MONITOR_NUM_RECLOCK);
   
   if (lock_get_mode(in_lock) == LOCK_S) {
     timespec now = TraceTool::get_time();
@@ -2913,16 +2922,12 @@ lock_rec_dequeue_from_page(
             }
         }
         for (auto heap_no : heap_nos) {
-            TraceTool::get_instance()->get_log() << heap_no << endl;
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
             auto &read_chunk = read_chunks[heap_no];
-            sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_subtree_size);
+            sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_num_locks);
             TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
             TraceTool::get_instance()->num_write_locks.push_back(write_locks[heap_no].size());
-            while (read_chunk.size() > CHUNK_SIZE) {
-                read_chunk.pop_back();
-            }
             auto write_lock = find_lock_with_max_subtree_size(write_locks[heap_no]);
             // 1 for read chunk, -1 for write lock
             int select_result = 0;
