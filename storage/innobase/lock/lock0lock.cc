@@ -1585,7 +1585,7 @@ handle_trx_sub_tree_change(
   hash = lock_hash_get(wait_lock->type_mode);
   
   
-  fprintf(stderr, "%d waiting on rec (%lu, %lu, %lu)\n", trx->id, space, page_no, heap_no);
+  fprintf(stderr, "%lu waiting on rec (%lu, %lu, %lu)\n", trx->id, space, page_no, heap_no);
   fprintf(stderr, "(%lu, %lu, %lu)->[", space, page_no, heap_no);
   
   hash = lock_hash_get(wait_lock->type_mode);
