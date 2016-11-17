@@ -1606,7 +1606,8 @@ lock_rec_fix_sub_tree_size(
 	ulint		space;
 	ulint		page_no;
 	ulint		heap_no;
-  int     sub_tree_size_change = 0;
+  int     max_height;
+  int     height_diff;
 	hash_table_t*	hash;
 
 	ut_ad(lock_mutex_own());
@@ -1616,10 +1617,12 @@ lock_rec_fix_sub_tree_size(
 	page_no = in_lock->un_member.rec_lock.page_no;
 
 	hash = lock_hash_get(in_lock->type_mode);
+  
+  max_height = in_lock->trx->sub_tree_size;
+  height_diff = 0;
     
   if (lock_get_wait(in_lock)) {
     heap_no = lock_rec_find_set_bit(in_lock);
-    
     for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
          lock != NULL;
          lock = lock_rec_get_next_on_page_const(lock)) {
@@ -1627,7 +1630,10 @@ lock_rec_fix_sub_tree_size(
       if (lock_rec_get_nth_bit(lock, heap_no)
           && !lock_get_wait(lock)
           && in_lock->trx != lock->trx) {
-        handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size + 1);
+        height_diff = in_lock->trx->sub_tree_size + 1 - lock->trx->sub_tree_size;
+        if (height_diff > 0) {
+          handle_trx_sub_tree_change(lock->trx, height_diff);
+        }
       }
     }
   } else {
@@ -1637,10 +1643,14 @@ lock_rec_fix_sub_tree_size(
       if (lock_get_wait(lock)
           && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))
           && in_lock->trx != lock->trx) {
-        sub_tree_size_change += lock->trx->sub_tree_size + 1;
+        if (lock->trx->sub_tree_size + 1 > max_height) {
+          max_height = lock->trx->sub_tree_size;
+        }
       }
     }
-    handle_trx_sub_tree_change(in_lock->trx, sub_tree_size_change);
+    if (max_height > in_lock->trx->sub_tree_size) {
+      handle_trx_sub_tree_change(in_lock->trx, max_height - in_lock->trx->sub_tree_size);
+    }
   }
 }
 
@@ -2466,14 +2476,14 @@ void
 lock_grant(
 /*=======*/
 	lock_t*	in_lock,	/*!< in/out: waiting lock request */
-    bool    owns_trx_mutex)    /*!< in: whether lock->trx->mutex is owned */
+  bool    owns_trx_mutex)    /*!< in: whether lock->trx->mutex is owned */
 {
 	ut_ad(lock_mutex_own());
   ut_ad(trx_mutex_own(in_lock->trx) == owns_trx_mutex);
   
   lock_t*     lock = lock_rec_get_next_on_page(in_lock);
   ulint       heap_no = lock_rec_find_set_bit(in_lock);
-  int         sub_tree_change = 0;
+  int         max_height = 0;
     
   lock_reset_lock_and_trx_wait(in_lock);
   
@@ -2489,12 +2499,17 @@ lock_grant(
   }
   for (; lock != NULL;
        lock = lock_rec_get_next(heap_no, lock)) {
-      if (lock_get_wait(lock)
-          && !lock->batch_scheduled) {
-          sub_tree_change += lock->trx->sub_tree_size + 1;
+    if (lock_get_wait(lock)
+        && !lock->batch_scheduled
+        && in_lock->trx != lock->trx) {
+      if (lock->trx->sub_tree_size + 1 > max_height) {
+        max_height = lock->trx->sub_tree_size + 1;
       }
+    }
   }
-  handle_trx_sub_tree_change(in_lock->trx, sub_tree_change);
+  if (max_height > in_lock->trx->sub_tree_size) {
+    handle_trx_sub_tree_change(in_lock->trx, max_height - in_lock->trx->sub_tree_size);
+  }
 
 	if (lock_get_mode(in_lock) == LOCK_AUTO_INC) {
 		dict_table_t*	table = in_lock->un_member.tab_lock.table;
@@ -2823,7 +2838,7 @@ compare_locks_by_subtree_size(
 }
 
 lock_t*
-find_lock_with_max_subtree_size(
+find_lock_with_max_height(
     std::vector<lock_t*>    &locks)
 {
     lock_t* result = NULL;
@@ -2850,11 +2865,11 @@ lock_rec_dequeue_from_page(
 					get their lock requests granted,
 					if they are now qualified to it */
 {
-    TraceTool::path_count = 42;
-    TRACE_START();
+  TraceTool::path_count = 42;
+  TRACE_START();
 	ulint		space;
 	ulint		page_no;
-    ulint       heap_no;
+  ulint       heap_no;
 	lock_t*		lock;
 	trx_lock_t*	trx_lock;
 	hash_table_t*	lock_hash;
@@ -2879,7 +2894,7 @@ lock_rec_dequeue_from_page(
 	UT_LIST_REMOVE(trx_lock->trx_locks, in_lock);
 
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
-    MONITOR_DEC(MONITOR_NUM_RECLOCK);
+  MONITOR_DEC(MONITOR_NUM_RECLOCK);
   
   if (lock_get_mode(in_lock) == LOCK_S) {
     timespec now = TraceTool::get_time();
@@ -2889,95 +2904,84 @@ lock_rec_dequeue_from_page(
     TraceTool::get_instance()->write_lock_held_time.push_back(TraceTool::difftime(in_lock->granted_time, now));
   }
   
-    if (innodb_lock_schedule_algorithm
-        == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-        && !thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {
-        
-        std::unordered_map<ulint, std::vector<lock_t *>> read_chunks;
-        std::unordered_map<ulint, std::vector<lock_t *>> write_locks;
-        std::set<ulint> heap_nos;
-        
-        for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
-                                                    page_no);
-             lock != NULL;
-             lock = lock_rec_get_next_on_page(lock)) {
-            if (!lock_get_wait(lock)) {
-                continue;
-            }
-            heap_no = lock_rec_find_set_bit(lock);
-            if (lock_rec_get_nth_bit(in_lock, heap_no) &&
-                !lock_rec_has_to_wait_granted(lock)) {
-                heap_nos.insert(heap_no);
-                if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S) {
-                    read_chunks[heap_no].push_back(lock);
-                } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X) {
-                    write_locks[heap_no].push_back(lock);
-                }
-            }
-        }
-        for (auto heap_no : heap_nos) {
-            TraceTool::get_instance()->get_log() << heap_no << endl;
-            lint read_sub_tree_size_total = 0;
-            lint write_sub_tree_size = 0;
-            auto &read_chunk = read_chunks[heap_no];
-            sort(read_chunk.begin(), read_chunk.end(), compare_locks_by_subtree_size);
-            TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
-            TraceTool::get_instance()->num_write_locks.push_back(write_locks[heap_no].size());
-            while (read_chunk.size() > CHUNK_SIZE) {
-                read_chunk.pop_back();
-            }
-            auto write_lock = find_lock_with_max_subtree_size(write_locks[heap_no]);
-            // 1 for read chunk, -1 for write lock
-            int select_result = 0;
-            for (auto lock : read_chunk) {
-                read_sub_tree_size_total += lock->trx->sub_tree_size;
-            }
-            if (write_lock != NULL) {
-                write_sub_tree_size = write_lock->trx->sub_tree_size;
-            }
-            
-            if (read_chunk.size() > 0 &&
-                write_lock != NULL) {
-                double write_first_cost = read_sub_tree_size_total + read_chunk.size();
-                double read_first_cost = (write_sub_tree_size + 1) * finish_time(read_chunk.size());
-                select_result = write_first_cost > read_first_cost? 1 : -1;
-            } else if (write_lock == NULL) {
-                select_result = 1;
-            } else if (read_chunk.size() > 0) {
-                select_result = -1;
-            }
-            
-            if (select_result == 1) {
-                for (auto lock : read_chunk) {
-                    lock->batch_scheduled = true;
-                }
-                for (auto lock : read_chunk) {
-                    lock_grant(lock, false);
-                }
-
-            } else if (select_result == -1) {
-                write_lock->batch_scheduled = true;
-                lock_grant(write_lock, false);
-            }
-        }
-        TraceTool::get_instance()->get_log() << endl;
-    }
+  if (innodb_lock_schedule_algorithm
+      == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
+      && !thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {
+      
+    std::unordered_map<ulint, std::vector<lock_t *>> read_chunks;
+    std::unordered_map<ulint, std::vector<lock_t *>> write_locks;
+    std::set<ulint> heap_nos;
     
     for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
                                                 page_no);
          lock != NULL;
          lock = lock_rec_get_next_on_page(lock)) {
-        
-        if (lock_get_wait(lock)
-            && !lock_rec_has_to_wait_in_queue(lock)) {
-            
-            /* Grant the lock */
-            ut_ad(lock->trx != in_lock->trx);
-            lock_grant(lock, false);
+      if (!lock_get_wait(lock)) {
+          continue;
+      }
+      heap_no = lock_rec_find_set_bit(lock);
+      if (lock_rec_get_nth_bit(in_lock, heap_no) &&
+          !lock_rec_has_to_wait_granted(lock)) {
+        heap_nos.insert(heap_no);
+        if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S) {
+          read_chunks[heap_no].push_back(lock);
+        } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X) {
+          write_locks[heap_no].push_back(lock);
         }
+      }
     }
-    TRACE_END(2);
-    TraceTool::path_count = 0;
+    for (auto heap_no : heap_nos) {
+      lint max_height = 0;
+      lint write_sub_tree_size = 0;
+      auto &read_chunk = read_chunks[heap_no];
+      TraceTool::get_instance()->num_read_locks.push_back(read_chunk.size());
+      TraceTool::get_instance()->num_write_locks.push_back(write_locks[heap_no].size());
+      auto write_lock = find_lock_with_max_height(write_locks[heap_no]);
+      // 1 for read chunk, -1 for write lock
+      int select_result = 0;
+      for (auto lock : read_chunk) {
+        max_height = (lock->trx->sub_tree_size > max_height) ? lock->trx->sub_tree_size : max_height;
+      }
+      if (write_lock != NULL) {
+        write_sub_tree_size = write_lock->trx->sub_tree_size;
+      }
+      
+      if (read_chunk.size() > 0 &&
+          write_lock != NULL) {
+        select_result = max_height > write_sub_tree_size? 1 : -1;
+      } else if (write_lock == NULL) {
+          select_result = 1;
+      } else if (read_chunk.size() > 0) {
+          select_result = -1;
+      }
+      
+      if (select_result == 1) {
+        for (auto lock : read_chunk) {
+          lock->batch_scheduled = true;
+        }
+        for (auto lock : read_chunk) {
+          lock_grant(lock, false);
+        }
+      } else if (select_result == -1) {
+        write_lock->batch_scheduled = true;
+        lock_grant(write_lock, false);
+      }
+    }
+  }
+  
+  for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
+                                              page_no);
+       lock != NULL;
+       lock = lock_rec_get_next_on_page(lock)) {
+    if (lock_get_wait(lock)
+        && !lock_rec_has_to_wait_in_queue(lock)) {
+      /* Grant the lock */
+      ut_ad(lock->trx != in_lock->trx);
+      lock_grant(lock, false);
+    }
+  }
+  TRACE_END(2);
+  TraceTool::path_count = 0;
 }
 
 /*************************************************************//**
@@ -4791,13 +4795,13 @@ released:
         while (read_chunk.size() > CHUNK_SIZE) {
             read_chunk.pop_back();
         }
-        write_lock =find_lock_with_max_subtree_size(write_locks);
-        long read_sub_tree_size_total = 0;
+        write_lock =find_lock_with_max_height(write_locks);
+        long max_height = 0;
         long write_sub_tree_size = 0;
         // 1 for read chunk, -1 for write lock
         int select_result = 0;
         for (auto lock : read_chunk) {
-            read_sub_tree_size_total += lock->trx->sub_tree_size;
+            max_height += lock->trx->sub_tree_size;
         }
         if (write_lock != NULL) {
             write_sub_tree_size = write_lock->trx->sub_tree_size;
@@ -4805,7 +4809,7 @@ released:
         
         if (read_chunk.size() > 0 &&
             write_lock != NULL) {
-            double write_first_cost = read_sub_tree_size_total + read_chunk.size();
+            double write_first_cost = max_height + read_chunk.size();
             double read_first_cost = (write_sub_tree_size + 1) * finish_time(read_chunk.size());
             select_result = write_first_cost > read_first_cost? 1 : -1;
         } else if (write_lock == NULL) {
