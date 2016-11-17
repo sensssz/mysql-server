@@ -1575,7 +1575,7 @@ handle_trx_sub_tree_change(
     if (trx->state != TRX_STATE_ACTIVE
         || trx->lock.que_state != TRX_QUE_LOCK_WAIT
         || trx->lock.wait_lock == NULL) {
-        return;
+      return;
     }
     // Is waiting for other transactions
     wait_lock = trx->lock.wait_lock;
@@ -1585,14 +1585,14 @@ handle_trx_sub_tree_change(
     hash = lock_hash_get(wait_lock->type_mode);
     lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
     if (!lock_rec_get_nth_bit(lock, heap_no)) {
-        lock = lock_rec_get_next(heap_no, lock);
+      lock = lock_rec_get_next(heap_no, lock);
     }
-    for (; lock != wait_lock;
+    for (; lock != NULL;
          lock = lock_rec_get_next(heap_no, lock)) {
-        if (!lock_get_wait(lock)
-            && trx != lock->trx) {
-            handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
-        }
+      if (!lock_get_wait(lock)
+          && trx != lock->trx) {
+        handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
+      }
     }
 }
 
@@ -1624,7 +1624,7 @@ lock_rec_fix_sub_tree_size(
       lock = lock_rec_get_next_const(heap_no, lock);
     }
     
-    for (; lock != NULL;
+    for (; lock != in_lock;
          lock = lock_rec_get_next_const(heap_no, lock)) {
       if (!lock_get_wait(lock)
           && in_lock->trx != lock->trx) {
@@ -1633,7 +1633,7 @@ lock_rec_fix_sub_tree_size(
     }
   } else {
     for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
-         lock != NULL;
+         lock != in_lock;
          lock = lock_rec_get_next_on_page_const(lock)) {
       if (lock_get_wait(lock)
           && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))
@@ -1778,11 +1778,6 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 	ut_ad(trx_mutex_own(lock->trx));
     
   bool wait_lock = m_mode & LOCK_WAIT;
-  
-  if (wait_lock) {
-    lock_set_lock_and_trx_wait(lock, lock->trx);
-    lock_rec_fix_sub_tree_size(lock);
-  }
 
 	if (add_to_hash) {
 		ulint	key = m_rec_id.fold();
@@ -1793,7 +1788,9 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
     HASH_INSERT(lock_t, hash, lock_hash, key, lock);
 	}
 
-  if (!wait_lock) {
+  if (wait_lock) {
+    lock_set_lock_and_trx_wait(lock, lock->trx);
+  } else {
     lock->granted_time = TraceTool::get_time();
   }
 
@@ -2027,6 +2024,10 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
     
   if (err == DB_DEADLOCK || err == DB_SUCCESS_LOCKED_REC) {
     TraceTool::get_instance()->total_locks++;
+  }
+  
+  if (err != DB_DEADLOCK) {
+    lock_rec_fix_sub_tree_size(lock);
   }
 
 	ut_ad(trx_mutex_own(m_trx));
