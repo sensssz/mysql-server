@@ -1787,11 +1787,6 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 	ut_ad(trx_mutex_own(lock->trx));
     
   bool wait_lock = m_mode & LOCK_WAIT;
-  
-  if (wait_lock) {
-    lock_set_lock_and_trx_wait(lock, lock->trx);
-    lock_rec_fix_sub_tree_size(lock);
-  }
 
 	if (add_to_hash) {
 		ulint	key = m_rec_id.fold();
@@ -1802,7 +1797,9 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
     HASH_INSERT(lock_t, hash, lock_hash, key, lock);
 	}
 
-  if (!wait_lock) {
+  if (wait_lock) {
+    lock_set_lock_and_trx_wait(lock, lock->trx);
+  } else {
     lock->granted_time = TraceTool::get_time();
   }
 
@@ -2036,6 +2033,10 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
     
   if (err == DB_DEADLOCK || err == DB_SUCCESS_LOCKED_REC) {
     TraceTool::get_instance()->total_locks++;
+  }
+  
+  if (DB != DB_DEADLOCK) {
+    lock_rec_fix_sub_tree_size(lock);
   }
 
 	ut_ad(trx_mutex_own(m_trx));
