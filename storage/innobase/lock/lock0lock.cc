@@ -1597,7 +1597,7 @@ handle_trx_sub_tree_change(
        lock = lock_rec_get_next(heap_no, lock)) {
     if (!lock_get_wait(lock)
         && trx != lock->trx) {
-      fprintf(stderr, "%d,", lock->trx->id);
+      fprintf(stderr, "%lu,", lock->trx->id);
     }
   }
   fprintf(stderr, "]\n\n");
