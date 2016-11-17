@@ -1467,6 +1467,7 @@ trx_start_low(
 	trx->start_time_micro = clock();
     
   trx->sub_tree_size = 0;
+  trx->size_updated = false;
 
 	ut_a(trx->error_state == DB_SUCCESS);
 

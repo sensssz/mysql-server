@@ -1577,6 +1577,7 @@ handle_trx_sub_tree_change(
       || trx->lock.wait_lock == NULL) {
     return;
   }
+  trx->size_updated = true;
   // Is waiting for other transactions
   wait_lock = trx->lock.wait_lock;
   space = wait_lock->un_member.rec_lock.space;
@@ -1613,6 +1614,7 @@ handle_trx_sub_tree_change(
       handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
     }
   }
+  trx->size_updated = false;
 }
 
 static
