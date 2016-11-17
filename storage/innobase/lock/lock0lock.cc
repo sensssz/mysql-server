@@ -1571,6 +1571,10 @@ handle_trx_sub_tree_change(
   lock_t*     lock;
   hash_table_t*	hash;
   
+  if (trx->size_updated) {
+    return;
+  }
+  
   trx->sub_tree_size += sub_tree_size_change;
   if (trx->state != TRX_STATE_ACTIVE
       || trx->lock.que_state != TRX_QUE_LOCK_WAIT
