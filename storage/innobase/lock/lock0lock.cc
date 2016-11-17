@@ -1622,10 +1622,9 @@ lock_rec_fix_sub_tree_size(
     
     for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
          lock != NULL;
-         lock = lock_rec_get_next_on_page_const(lock)) {
+         lock = lock_rec_get_next_const(heap_no, lock)) {
 
-      if (lock_rec_get_nth_bit(lock, heap_no)
-          && !lock_get_wait(lock)
+      if (!lock_get_wait(lock)
           && in_lock->trx != lock->trx) {
         handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size + 1);
       }
