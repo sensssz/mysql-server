@@ -1606,7 +1606,7 @@ lock_rec_fix_sub_tree_size(
 	ulint		space;
 	ulint		page_no;
 	ulint		heap_no;
-    int         sub_tree_size_change = 0;
+  int     sub_tree_size_change = 0;
 	hash_table_t*	hash;
 
 	ut_ad(lock_mutex_own());
@@ -1617,31 +1617,31 @@ lock_rec_fix_sub_tree_size(
 
 	hash = lock_hash_get(in_lock->type_mode);
     
-    if (lock_get_wait(in_lock)) {
-        heap_no = lock_rec_find_set_bit(in_lock);
-        
-        for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
-             lock != NULL;
-             lock = lock_rec_get_next_on_page_const(lock)) {
+  if (lock_get_wait(in_lock)) {
+    heap_no = lock_rec_find_set_bit(in_lock);
+    
+    for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
+         lock != NULL;
+         lock = lock_rec_get_next_on_page_const(lock)) {
 
-            if (lock_rec_get_nth_bit(lock, heap_no)
-                && !lock_get_wait(lock)
-                && in_lock->trx != lock->trx) {
-                handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size + 1);
-            }
-        }
-    } else {
-        for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
-             lock != NULL;
-             lock = lock_rec_get_next_on_page_const(lock)) {
-            if (lock_get_wait(lock)
-                && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))
-                && in_lock->trx != lock->trx) {
-                sub_tree_size_change += lock->trx->sub_tree_size + 1;
-            }
-        }
-        handle_trx_sub_tree_change(in_lock->trx, sub_tree_size_change);
+      if (lock_rec_get_nth_bit(lock, heap_no)
+          && !lock_get_wait(lock)
+          && in_lock->trx != lock->trx) {
+        handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size + 1);
+      }
     }
+  } else {
+    for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
+         lock != NULL;
+         lock = lock_rec_get_next_on_page_const(lock)) {
+      if (lock_get_wait(lock)
+          && lock_rec_get_nth_bit(in_lock, lock_rec_find_set_bit(lock))
+          && in_lock->trx != lock->trx) {
+        sub_tree_size_change += lock->trx->sub_tree_size + 1;
+      }
+    }
+    handle_trx_sub_tree_change(in_lock->trx, sub_tree_size_change);
+  }
 }
 
 /*********************************************************************//**
@@ -1654,25 +1654,25 @@ static
 dberr_t
 lock_rec_insert_by_subtree_size(
 	lock_t *in_lock) /*!< in: lock to be insert */{
-    ulint               space;
-    ulint               page_no;
+  ulint               space;
+  ulint               page_no;
 	ulint				rec_fold;
-    hash_table_t*       hash;
+  hash_table_t*       hash;
 	hash_cell_t*        cell;
 	lock_t*				node;
 	lock_t*				next;
-    dberr_t             err;
+  dberr_t       err;
 
-    space = in_lock->un_member.rec_lock.space;
-    page_no = in_lock->un_member.rec_lock.page_no;
+  space = in_lock->un_member.rec_lock.space;
+  page_no = in_lock->un_member.rec_lock.page_no;
 	rec_fold = lock_rec_fold(space, page_no);
-    hash = lock_hash_get(in_lock->type_mode);
+  hash = lock_hash_get(in_lock->type_mode);
 	cell = hash_get_nth_cell(hash,
-				 hash_calc_hash(rec_fold, hash));
+                           hash_calc_hash(rec_fold, hash));
 
-    err = DB_SUCCESS;
-    node = (lock_t *) cell->node;
-    lock_rec_fix_sub_tree_size(in_lock);
+  err = DB_SUCCESS;
+  node = (lock_t *) cell->node;
+  lock_rec_fix_sub_tree_size(in_lock);
 	// If in_lock is not a wait lock, we insert it to the head of the list.
 	if (node == NULL || !lock_get_wait(in_lock) || has_higher_priority(in_lock, node)) {
 		cell->node = in_lock;
@@ -1682,27 +1682,27 @@ lock_rec_insert_by_subtree_size(
             err = DB_SUCCESS_LOCKED_REC;
         }
 	} else {
-        while (node != NULL && has_higher_priority((lock_t *) node->hash,
-                               in_lock)) {
-            node = (lock_t *) node->hash;
-        }
-        next = (lock_t *) node->hash;
-        node->hash = in_lock;
-        in_lock->hash = next;
-        
-        if (lock_get_wait(in_lock) && !lock_rec_has_to_wait_in_queue(in_lock)) {
-            if (cell->node != in_lock) {
-                // Move it to the front of the queue
-                node->hash = in_lock->hash;
-                next = (lock_t *) cell->node;
-                cell->node = in_lock;
-                in_lock->hash = next;
-            }
-            lock_grant(in_lock, true);
-            err = DB_SUCCESS_LOCKED_REC;
-        }
+    while (node != NULL && has_higher_priority((lock_t *) node->hash,
+                           in_lock)) {
+      node = (lock_t *) node->hash;
     }
-    return err;
+    next = (lock_t *) node->hash;
+    node->hash = in_lock;
+    in_lock->hash = next;
+    
+    if (lock_get_wait(in_lock) && !lock_rec_has_to_wait_in_queue(in_lock)) {
+      if (cell->node != in_lock) {
+        // Move it to the front of the queue
+        node->hash = in_lock->hash;
+        next = (lock_t *) cell->node;
+        cell->node = in_lock;
+        in_lock->hash = next;
+      }
+      lock_grant(in_lock, true);
+      err = DB_SUCCESS_LOCKED_REC;
+    }
+  }
+  return err;
 }
 
 static
@@ -1776,20 +1776,23 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 	ut_ad(lock_mutex_own());
 	ut_ad(trx_mutex_own(lock->trx));
     
-    bool wait_lock = m_mode & LOCK_WAIT;
+  bool wait_lock = m_mode & LOCK_WAIT;
+  
+  if (wait_lock) {
+    lock_set_lock_and_trx_wait(lock, lock->trx);
+    lock_rec_fix_sub_tree_size(lock);
+  }
 
 	if (add_to_hash) {
 		ulint	key = m_rec_id.fold();
-        hash_table_t *lock_hash = lock_hash_get(m_mode);
+    hash_table_t *lock_hash = lock_hash_get(m_mode);
 
 		++lock->index->table->n_rec_locks;
         
-        HASH_INSERT(lock_t, hash, lock_hash, key, lock);
+    HASH_INSERT(lock_t, hash, lock_hash, key, lock);
 	}
 
-	if (wait_lock) {
-		lock_set_lock_and_trx_wait(lock, lock->trx);
-  } else {
+  if (!wait_lock) {
     lock->granted_time = TraceTool::get_time();
   }
 
@@ -2466,32 +2469,32 @@ lock_grant(
     bool    owns_trx_mutex)    /*!< in: whether lock->trx->mutex is owned */
 {
 	ut_ad(lock_mutex_own());
-    ut_ad(trx_mutex_own(in_lock->trx) == owns_trx_mutex);
-    
-    lock_t*     lock = lock_rec_get_next_on_page(in_lock);
-    ulint       heap_no = lock_rec_find_set_bit(in_lock);
-    int         sub_tree_change = 0;
+  ut_ad(trx_mutex_own(in_lock->trx) == owns_trx_mutex);
+  
+  lock_t*     lock = lock_rec_get_next_on_page(in_lock);
+  ulint       heap_no = lock_rec_find_set_bit(in_lock);
+  int         sub_tree_change = 0;
     
   lock_reset_lock_and_trx_wait(in_lock);
   
   in_lock->granted_time = TraceTool::get_time();
 
-    if (!owns_trx_mutex) {
-        trx_mutex_enter(in_lock->trx);
-    }
-    
-    if (lock != NULL &&
-        !lock_rec_get_nth_bit(lock, heap_no)) {
-        lock = lock_rec_get_next(heap_no, lock);
-    }
-    for (; lock != NULL;
-         lock = lock_rec_get_next(heap_no, lock)) {
-        if (lock_get_wait(lock)
-            && !lock->batch_scheduled) {
-            sub_tree_change += lock->trx->sub_tree_size + 1;
-        }
-    }
-    handle_trx_sub_tree_change(in_lock->trx, sub_tree_change);
+  if (!owns_trx_mutex) {
+      trx_mutex_enter(in_lock->trx);
+  }
+  
+  if (lock != NULL &&
+      !lock_rec_get_nth_bit(lock, heap_no)) {
+      lock = lock_rec_get_next(heap_no, lock);
+  }
+  for (; lock != NULL;
+       lock = lock_rec_get_next(heap_no, lock)) {
+      if (lock_get_wait(lock)
+          && !lock->batch_scheduled) {
+          sub_tree_change += lock->trx->sub_tree_size + 1;
+      }
+  }
+  handle_trx_sub_tree_change(in_lock->trx, sub_tree_change);
 
 	if (lock_get_mode(in_lock) == LOCK_AUTO_INC) {
 		dict_table_t*	table = in_lock->un_member.tab_lock.table;
