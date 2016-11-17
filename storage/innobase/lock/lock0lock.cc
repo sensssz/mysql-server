@@ -1561,39 +1561,39 @@ has_higher_priority(
 static
 void
 handle_trx_sub_tree_change(
-    trx_t*  trx,
-    lint    sub_tree_size_change)
+  trx_t*  trx,
+  lint    sub_tree_size_change)
 {
-    ulint		space;
-    ulint		page_no;
-    ulint		heap_no;
-    lock_t*     wait_lock;
-    lock_t*     lock;
-    hash_table_t*	hash;
-    
-    trx->sub_tree_size += sub_tree_size_change;
-    if (trx->state != TRX_STATE_ACTIVE
-        || trx->lock.que_state != TRX_QUE_LOCK_WAIT
-        || trx->lock.wait_lock == NULL) {
-      return;
+  ulint		space;
+  ulint		page_no;
+  ulint		heap_no;
+  lock_t*     wait_lock;
+  lock_t*     lock;
+  hash_table_t*	hash;
+  
+  trx->sub_tree_size += sub_tree_size_change;
+  if (trx->state != TRX_STATE_ACTIVE
+      || trx->lock.que_state != TRX_QUE_LOCK_WAIT
+      || trx->lock.wait_lock == NULL) {
+    return;
+  }
+  // Is waiting for other transactions
+  wait_lock = trx->lock.wait_lock;
+  space = wait_lock->un_member.rec_lock.space;
+  page_no = wait_lock->un_member.rec_lock.page_no;
+  heap_no = lock_rec_find_set_bit(wait_lock);
+  hash = lock_hash_get(wait_lock->type_mode);
+  lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
+  if (!lock_rec_get_nth_bit(lock, heap_no)) {
+    lock = lock_rec_get_next(heap_no, lock);
+  }
+  for (; lock != NULL;
+       lock = lock_rec_get_next(heap_no, lock)) {
+    if (!lock_get_wait(lock)
+        && trx != lock->trx) {
+      handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
     }
-    // Is waiting for other transactions
-    wait_lock = trx->lock.wait_lock;
-    space = wait_lock->un_member.rec_lock.space;
-    page_no = wait_lock->un_member.rec_lock.page_no;
-    heap_no = lock_rec_find_set_bit(wait_lock);
-    hash = lock_hash_get(wait_lock->type_mode);
-    lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
-    if (!lock_rec_get_nth_bit(lock, heap_no)) {
-      lock = lock_rec_get_next(heap_no, lock);
-    }
-    for (; lock != NULL;
-         lock = lock_rec_get_next(heap_no, lock)) {
-      if (!lock_get_wait(lock)
-          && trx != lock->trx) {
-        handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
-      }
-    }
+  }
 }
 
 static
@@ -1623,7 +1623,6 @@ lock_rec_fix_sub_tree_size(
     if (!lock_rec_get_nth_bit(lock, heap_no)) {
       lock = lock_rec_get_next_const(heap_no, lock);
     }
-    
     for (; lock != in_lock;
          lock = lock_rec_get_next_const(heap_no, lock)) {
       if (!lock_get_wait(lock)
