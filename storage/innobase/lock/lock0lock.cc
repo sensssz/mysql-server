@@ -2035,7 +2035,7 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
     TraceTool::get_instance()->total_locks++;
   }
   
-  if (DB != DB_DEADLOCK) {
+  if (err != DB_DEADLOCK) {
     lock_rec_fix_sub_tree_size(lock);
   }
 
