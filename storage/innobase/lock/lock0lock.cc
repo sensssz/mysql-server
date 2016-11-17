@@ -1583,6 +1583,25 @@ handle_trx_sub_tree_change(
   page_no = wait_lock->un_member.rec_lock.page_no;
   heap_no = lock_rec_find_set_bit(wait_lock);
   hash = lock_hash_get(wait_lock->type_mode);
+  
+  
+  fprintf(stderr, "%d waiting on rec (%lu, %lu, %lu)\n", trx->id, space, page_no, heap_no);
+  fprintf(stderr, "(%lu, %lu, %lu)->[", space, page_no, heap_no);
+  
+  hash = lock_hash_get(wait_lock->type_mode);
+  lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
+  if (!lock_rec_get_nth_bit(lock, heap_no)) {
+    lock = lock_rec_get_next(heap_no, lock);
+  }
+  for (; lock != wait_lock;
+       lock = lock_rec_get_next(heap_no, lock)) {
+    if (!lock_get_wait(lock)
+        && trx != lock->trx) {
+      fprintf(stderr, "%d,", lock->trx->id);
+    }
+  }
+  fprintf(stderr, "]\n\n");
+  
   lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
   if (!lock_rec_get_nth_bit(lock, heap_no)) {
     lock = lock_rec_get_next(heap_no, lock);
