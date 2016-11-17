@@ -1619,11 +1619,13 @@ lock_rec_fix_sub_tree_size(
     
   if (lock_get_wait(in_lock)) {
     heap_no = lock_rec_find_set_bit(in_lock);
+    lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
+    if (!lock_rec_get_nth_bit(lock, heap_no)) {
+      lock = lock_rec_get_next_const(heap_no, lock);
+    }
     
-    for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
-         lock != NULL;
+    for (; lock != NULL;
          lock = lock_rec_get_next_const(heap_no, lock)) {
-
       if (!lock_get_wait(lock)
           && in_lock->trx != lock->trx) {
         handle_trx_sub_tree_change(lock->trx, in_lock->trx->sub_tree_size + 1);
