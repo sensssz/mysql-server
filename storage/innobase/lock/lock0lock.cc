@@ -1570,6 +1570,10 @@ handle_trx_sub_tree_change(
     lock_t*     wait_lock;
     lock_t*     lock;
     hash_table_t*	hash;
+  
+    if (trx->size_updated) {
+        return;
+    }
     
     trx->sub_tree_size += sub_tree_size_change;
     if (trx->state != TRX_STATE_ACTIVE
@@ -1577,6 +1581,7 @@ handle_trx_sub_tree_change(
         || trx->lock.wait_lock == NULL) {
         return;
     }
+    trx->size_updated = true;
     // Is waiting for other transactions
     wait_lock = trx->lock.wait_lock;
     space = wait_lock->un_member.rec_lock.space;
@@ -1594,6 +1599,7 @@ handle_trx_sub_tree_change(
             handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
         }
     }
+    trx->size_updated = false;
 }
 
 static
