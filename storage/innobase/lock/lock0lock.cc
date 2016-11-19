@@ -1615,7 +1615,7 @@ handle_trx_sub_tree_change(
        lock = lock_rec_get_next(heap_no, lock)) {
     if (!lock_get_wait(lock)
         && trx != lock->trx) {
-      handle_trx_sub_tree_change(lock->trx, sub_tree_size_change + 1);
+      handle_trx_sub_tree_change(lock->trx, sub_tree_size_change);
     }
   }
   trx->size_updated = false;
