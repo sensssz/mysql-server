@@ -2730,7 +2730,7 @@ lock_rec_dequeue_from_page(
          lock = lock_rec_get_next_on_page(lock)) {
       if(lock_get_wait(lock) &&
          !lock_rec_has_to_wait_in_queue(lock)) {
-        lock_grant(lock);
+        lock_grant(lock, false);
       }
     }
   } else {
@@ -2746,7 +2746,7 @@ lock_rec_dequeue_from_page(
 //
 //			/* Grant the lock */
 //			ut_ad(lock->trx != in_lock->trx);
-//			lock_grant(lock);
+//			lock_grant(lock, false);
 //		}
 //	}
 }
@@ -4775,7 +4775,7 @@ lock_table_dequeue(
 
 			/* Grant the lock */
 			ut_ad(in_lock->trx != lock->trx);
-			lock_grant(lock);
+			lock_grant(lock, false);
 		}
 	}
 }
