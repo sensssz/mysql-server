@@ -1934,7 +1934,8 @@ lock_rec_create(
 
   ut_ad(index->table->n_ref_count > 0 || !index->table->can_be_evicted);
 
-  if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS) {
+  if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
+      || thd_is_replication_slave_thread(trx->mysql_thd)) {
     HASH_INSERT(lock_t, hash, lock_sys->rec_hash,
                 lock_rec_fold(space, page_no), lock);
   } else {
