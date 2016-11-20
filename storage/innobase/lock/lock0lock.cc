@@ -393,9 +393,6 @@ UNIV_INTERN mysql_pfs_key_t	lock_sys_mutex_key;
 UNIV_INTERN mysql_pfs_key_t	lock_sys_wait_mutex_key;
 #endif /* UNIV_PFS_MUTEX */
 
-#ifdef UNIV_DEBUG
-UNIV_INTERN ibool	lock_print_waits	= FALSE;
-
 /*********************************************************************//**
 Checks if a waiting record lock request still has to wait in a queue.
 @return lock that is causing the wait */
@@ -414,6 +411,9 @@ lock_grant(
 /*=======*/
 	lock_t*	lock,	/*!< in/out: waiting lock request */
   bool    owns_trx_mutex);    /*!< in: whether lock->trx->mutex is owned */
+
+#ifdef UNIV_DEBUG
+UNIV_INTERN ibool	lock_print_waits	= FALSE;
 
 /*********************************************************************//**
 Validates the lock system.
