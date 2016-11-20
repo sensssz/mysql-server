@@ -4742,7 +4742,7 @@ lock_grant_and_move_on_rec(
 			&& lock_get_wait(lock)
 			&& !lock_rec_has_to_wait_in_queue(lock)) {
 
-			lock_grant(lock, false);
+			lock_grant(lock);
 
 			if (previous != NULL) {
 				/* Move the lock to the head of the list. */
@@ -4835,7 +4835,7 @@ released:
 
         /* Grant the lock */
         ut_ad(trx != lock->trx);
-        lock_grant(lock, false);
+        lock_grant(lock);
       }
     }
   } else {
