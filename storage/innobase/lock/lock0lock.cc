@@ -2553,30 +2553,31 @@ lock_grant_and_move_on_page(
 	ulint     rec_fold;
 
   rec_fold = lock_rec_fold(space, page_no);
-	previous = (lock_t *) hash_get_nth_cell(lock_sys->rec_hash,
-							hash_calc_hash(rec_fold, lock_sys->rec_hash))->node;
-	if (previous == NULL) {
-		return;
-	}
-	if (previous->un_member.rec_lock.space == space &&
-		previous->un_member.rec_lock.page_no == page_no) {
-		lock = previous;
-	}
-	else {
-		next = (lock_t *) previous->hash;
-		while (next &&
-				(next->un_member.rec_lock.space != space ||
-				next->un_member.rec_lock.page_no != page_no)) {
-			previous = next;
-			next = (lock_t *) previous->hash;
-		}
-		lock = (lock_t *) previous->hash;
-	}
-
-	ut_ad(previous->hash == lock || previous == lock);
+//	previous = (lock_t *) hash_get_nth_cell(lock_sys->rec_hash,
+//							hash_calc_hash(rec_fold, lock_sys->rec_hash))->node;
+//	if (previous == NULL) {
+//		return;
+//	}
+//	if (previous->un_member.rec_lock.space == space &&
+//		previous->un_member.rec_lock.page_no == page_no) {
+//		lock = previous;
+//	}
+//	else {
+//		next = (lock_t *) previous->hash;
+//		while (next &&
+//				(next->un_member.rec_lock.space != space ||
+//				next->un_member.rec_lock.page_no != page_no)) {
+//			previous = next;
+//			next = (lock_t *) previous->hash;
+//		}
+//		lock = (lock_t *) previous->hash;
+//	}
+//
+//	ut_ad(previous->hash == lock || previous == lock);
 	/* Grant locks if there are no conflicting locks ahead.
 	 Move granted locks to the head of the list. */
-	for (;lock != NULL;) {
+	for (lock = lock_rec_get_first_on_page_addr(space, page_no);
+       lock != NULL;) {
 		/* If the lock is a wait lock on this page, and it does not need to wait. */
 		if ((lock->un_member.rec_lock.space == space)
 			&& (lock->un_member.rec_lock.page_no == page_no)
@@ -2587,17 +2588,17 @@ lock_grant_and_move_on_page(
 			
 			if (previous != NULL) {
 				/* Move the lock to the head of the list. */
-				HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
+        previous->hash = lock->hash;
 				lock_rec_insert_to_head(lock, rec_fold);
 			} else {
 				/* Already at the head of the list. */
 				previous = lock;
 			}
 			/* Move on to the next lock. */
-			lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, previous));
+      lock = (lock_t *) lock->hash;
 		} else {
-			previous = lock;
-			lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, lock));
+      previous = lock;
+      lock = (lock_t *) lock->hash;
 		}
 	}
 }
