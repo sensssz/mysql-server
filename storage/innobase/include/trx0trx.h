@@ -28,6 +28,7 @@ Created 3/26/1996 Heikki Tuuri
 
 #include <set>
 #include <list>
+#include <time.h>
 
 #include "ha_prototypes.h"
 
@@ -54,6 +55,8 @@ class ReadView;
 
 // Forward declaration
 class FlushObserver;
+
+typedef struct timespec timespec;
 
 /** Dummy session used currently in MySQL interface */
 extern sess_t*	trx_dummy_sess;
@@ -1089,7 +1092,7 @@ struct trx_t {
 
 	time_t		start_time;	/*!< time the state last time became
 					TRX_STATE_ACTIVE */
-	clock_t 	start_time_micro; /*!< start time of the transaction
+	timespec 	start_time_nano; /*!< start time of the transaction
                     in microseconds. */
 	lsn_t		commit_lsn;	/*!< lsn at the time of the commit */
 	table_id_t	table_id;	/*!< Table to drop iff dict_operation

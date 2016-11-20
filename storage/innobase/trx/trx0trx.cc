@@ -1462,7 +1462,7 @@ trx_start_low(
 		trx->start_time = ut_time();
 	}
 
-	trx->start_time_micro = clock();
+  clock_gettime(CLOCK_REALTIME, &trx->start_time_nano);
 
 	ut_a(trx->error_state == DB_SUCCESS);
 

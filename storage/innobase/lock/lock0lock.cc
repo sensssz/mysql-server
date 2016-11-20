@@ -1524,6 +1524,9 @@ has_higher_priority(
 	lock_t *lock1,
 	lock_t *lock2)
 {
+  trx_t   *trx1;
+  trx_t   *trx2;
+
 	if (lock1 == NULL) {
 		return false;
 	} else if (lock2 == NULL) {
@@ -1540,7 +1543,15 @@ has_higher_priority(
 	} else if (!lock_get_wait(lock2)) {
 		return false;
 	}
-	return lock1->trx->start_time_micro <= lock2->trx->start_time_micro;
+  trx1 = lock1->trx;
+  trx2 = lock2->trx;
+  if (trx1->start_time_nano.tv_sec >= trx2->start_time_nano.tv_sec) {
+    return true;
+  } else if (trx1->start_time_nano.tv_sec < trx2->start_time_nano.tv_sec) {
+    return false;
+  } else {
+    return trx1->start_time_nano.tv_nsec >= trx2->start_time_nano.tv_nsec;
+  }
 }
 
 /*********************************************************************//**
@@ -1551,20 +1562,20 @@ Otherwise, insert it to the middle of the wait locks according to the age of
 the transaciton. */
 static
 dberr_t
-lock_rec_insert_by_trx_age(
+lock_rec_insert_by_trx_age_grant(
 	lock_t *in_lock) /*!< in: lock to be insert */{
-    ulint               space;
-    ulint               page_no;
+  ulint       space;
+  ulint       page_no;
 	ulint				rec_fold;
-    hash_table_t*       hash;
+  hash_table_t*       hash;
 	hash_cell_t*        cell;
 	lock_t*				node;
 	lock_t*				next;
 
-    space = in_lock->un_member.rec_lock.space;
-    page_no = in_lock->un_member.rec_lock.page_no;
+  space = in_lock->un_member.rec_lock.space;
+  page_no = in_lock->un_member.rec_lock.page_no;
 	rec_fold = lock_rec_fold(space, page_no);
-    hash = lock_hash_get(in_lock->type_mode);
+  hash = lock_hash_get(in_lock->type_mode);
 	cell = hash_get_nth_cell(hash,
 				 hash_calc_hash(rec_fold, hash));
 
@@ -1600,6 +1611,33 @@ lock_rec_insert_by_trx_age(
     }
     
     return DB_SUCCESS;
+}
+
+static
+void
+lock_rec_insert_by_trx_age(
+  lock_t *in_lock,
+  bool wait)
+{
+  ulint space = in_lock->un_member.rec_lock.space;
+  ulint page_no = in_lock->un_member.rec_lock.page_no;
+  ulint rec_fold = lock_rec_fold(space, page_no);
+  hash_cell_t* cell = hash_get_nth_cell(lock_sys->rec_hash,
+                                        hash_calc_hash(rec_fold, lock_sys->rec_hash));
+  
+  lock_t *node = (lock_t *) cell->node;
+  // If in_lock is not a wait lock, we insert it to the head of the list.
+  if (node == NULL || !wait || has_higher_priority(in_lock, node)) {
+    cell->node = in_lock;
+    in_lock->hash = node;
+    return;
+  }
+  while (node != NULL && has_higher_priority((lock_t *) node->hash, in_lock)) {
+    node = (lock_t *) node->hash;
+  }
+  lock_t *next = (lock_t *) node->hash;
+  node->hash = in_lock;
+  in_lock->hash = next;
 }
 
 static
@@ -1640,9 +1678,9 @@ lock_queue_validate(
 
 static
 void
-lock_rec_insert_to_head(
+lock_rec_move_to_front(
 	lock_t *in_lock,   /*!< in: lock to be insert */
-    ulint   rec_fold)  /*!< in: rec_fold of the page */
+  ulint   rec_fold)  /*!< in: rec_fold of the page */
 {
     hash_table_t*       hash;
     hash_cell_t*        cell;
@@ -1673,24 +1711,21 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 	ut_ad(lock_mutex_own());
 	ut_ad(trx_mutex_own(lock->trx));
     
-    bool wait_lock = m_mode & LOCK_WAIT;
+  bool wait_lock = m_mode & LOCK_WAIT;
 
 	if (add_to_hash) {
 		ulint	key = m_rec_id.fold();
-        hash_table_t *lock_hash = lock_hash_get(m_mode);
+    hash_table_t *lock_hash = lock_hash_get(m_mode);
 
-		++lock->index->table->n_rec_locks;
-        
-        if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-            && !thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
-            if (wait_lock) {
-                HASH_INSERT(lock_t, hash, lock_hash, key, lock);
-            } else {
-                lock_rec_insert_to_head(lock, m_rec_id.fold());
-            }
-        } else {
-            HASH_INSERT(lock_t, hash, lock_hash, key, lock);
-        }
+    ++lock->index->table->n_rec_locks;
+
+    if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
+        || thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
+      HASH_INSERT(lock_t, hash, lock_sys->rec_hash,
+                  lock_rec_fold(space, page_no), lock);
+    } else {
+      lock_rec_insert_by_trx_age(lock, m_mode & LOCK_WAIT);
+    }
 	}
 
 	if (wait_lock) {
@@ -1919,21 +1954,6 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	dberr_t	err = deadlock_check(lock);
 
 	ut_ad(trx_mutex_own(m_trx));
-    
-    // Move it only when it does not cause a deadlock.
-    if (err != DB_DEADLOCK
-        && innodb_lock_schedule_algorithm
-            == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-        && !thd_is_replication_slave_thread(lock->trx->mysql_thd)
-        && !trx_is_high_priority(lock->trx)) {
-        
-        HASH_DELETE(lock_t, hash, lock_hash_get(lock->type_mode),
-                    m_rec_id.fold(), lock);
-        dberr_t res = lock_rec_insert_by_trx_age(lock);
-        if (res != DB_SUCCESS) {
-            return res;
-        }
-    }
 
 	/* m_trx->mysql_thd is NULL if it's an internal trx. So current_thd is used */
 	if (err == DB_LOCK_WAIT) {
@@ -2706,6 +2726,7 @@ lock_rec_dequeue_from_page(
 	ulint		space;
 	ulint		page_no;
 	lock_t*		lock;
+  lock_t*   previous;
 	trx_lock_t*	trx_lock;
 	hash_table_t*	lock_hash;
 
@@ -2729,32 +2750,48 @@ lock_rec_dequeue_from_page(
 	UT_LIST_REMOVE(trx_lock->trx_locks, in_lock);
 
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
-	MONITOR_DEC(MONITOR_NUM_RECLOCK);
+  MONITOR_DEC(MONITOR_NUM_RECLOCK);
+  if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
+      || thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {
+    /* Check if waiting locks in the queue can now be granted: grant
+     locks if there are no conflicting locks ahead. Stop at the first
+     X lock that is waiting or has been granted. */
+    for (lock = lock_rec_get_first_on_page_addr(space, page_no);
+         lock != NULL;
+         lock = lock_rec_get_next_on_page(lock)) {
+      if(lock_get_wait(lock) &&
+         !lock_rec_has_to_wait_in_queue(lock)) {
+        lock_grant(lock, false);
+      }
+    }
+  } else {
+    previous = NULL;
+    for (lock = lock_rec_get_first_on_page_addr(space, page_no);
+         lock != NULL;) {
+      // If the lock is a wait lock on this page, and it does not need to wait
+      if ((lock->un_member.rec_lock.space == space)
+          && (lock->un_member.rec_lock.page_no == page_no)
+          && lock_get_wait(lock)
+          && !lock_rec_has_to_wait_in_queue(lock)) {
 
-	if (innodb_lock_schedule_algorithm
-	    == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS ||
-	    thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {
+        lock_grant(lock, false);
 
-		/* Check if waiting locks in the queue can now be granted:
-		grant locks if there are no conflicting locks ahead. Stop at
-		the first X lock that is waiting or has been granted. */
-
-		for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
-							    page_no);
-		     lock != NULL;
-		     lock = lock_rec_get_next_on_page(lock)) {
-
-			if (lock_get_wait(lock)
-			    && !lock_rec_has_to_wait_in_queue(lock)) {
-
-				/* Grant the lock */
-				ut_ad(lock->trx != in_lock->trx);
-				lock_grant(lock, false);
-			}
-		}
-	} else {
-		lock_grant_and_move_on_page(lock_hash, space, page_no);
-	}
+        if (previous != NULL) {
+          // Move the lock to the head of the list
+          HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
+          lock_rec_move_to_front(lock, rec_fold);
+        } else {
+          // Already at the head of the list.
+          previous = lock;
+        }
+        // Move on to the next lock
+        lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, previous));
+      } else {
+        previous = lock;
+        lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, lock));
+      }
+    }
+  }
 }
 
 /*************************************************************//**
@@ -4557,8 +4594,12 @@ lock_rec_unlock(
 	lock_mode		lock_mode)/*!< in: LOCK_S or LOCK_X */
 {
 	lock_t*		first_lock;
+  lock_t*   previous;
 	lock_t*		lock;
+  ulint   space;
+  ulint   page_no;
 	ulint		heap_no;
+  ulint   rec_fold;
 	const char*	stmt;
 	size_t		stmt_len;
 
@@ -4603,9 +4644,8 @@ released:
 	ut_a(!lock_get_wait(lock));
 	lock_rec_reset_nth_bit(lock, heap_no);
     
-    if (innodb_lock_schedule_algorithm
-        == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS ||
-        thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
+    if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
+        || thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
 
         /* Check if we can now grant waiting lock requests */
 
@@ -4620,7 +4660,36 @@ released:
             }
         }
     } else {
-        lock_grant_and_move_on_rec(lock_sys->rec_hash, first_lock, heap_no);
+      space = lock->un_member.rec_lock.space;
+      page_no = lock->un_member.rec_lock.page_no;
+      rec_fold = lock_rec_fold(space, page_no);
+      previous = NULL;
+      for (lock = first_lock;
+           lock != NULL;) {
+        // If the lock is a wait lock on this page, and it does not need to wait
+        if ((lock->un_member.rec_lock.space == space)
+            && (lock->un_member.rec_lock.page_no == page_no)
+            && lock_rec_get_nth_bit(lock, heap_no)
+            && lock_get_wait(lock)
+            && !lock_rec_has_to_wait_in_queue(lock)) {
+
+          lock_grant(lock, false);
+
+          if (previous != NULL) {
+            // Move the lock to the head of the list
+            HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
+            lock_rec_move_to_front(lock, rec_fold);
+          } else {
+            // Already at the head of the list.
+            previous = lock;
+          }
+          // Move on to the next lock
+          lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, previous));
+        } else {
+          previous = lock;
+          lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, lock));
+        }
+      }
     }
 
 	lock_mutex_exit();
