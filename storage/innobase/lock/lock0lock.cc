@@ -2576,6 +2576,7 @@ lock_grant_and_move_on_page(
 //	ut_ad(previous->hash == lock || previous == lock);
 	/* Grant locks if there are no conflicting locks ahead.
 	 Move granted locks to the head of the list. */
+  previous = NULL;
 	for (lock = lock_rec_get_first_on_page_addr(space, page_no);
        lock != NULL;) {
 		/* If the lock is a wait lock on this page, and it does not need to wait. */
