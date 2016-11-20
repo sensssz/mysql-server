@@ -4683,7 +4683,10 @@ lock_rec_unlock(
 {
 	lock_t*		first_lock;
 	lock_t*		lock;
+  ulint   space;
+  ulint   page_no;
 	ulint		heap_no;
+  ulint   rec_fold;
 	const char*	stmt;
 	size_t		stmt_len;
 
@@ -4729,18 +4732,51 @@ released:
 	ut_a(!lock_get_wait(lock));
 	lock_rec_reset_nth_bit(lock, heap_no);
 
-	/* Check if we can now grant waiting lock requests */
+  if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
+      || thd_is_replication_slave_thread(trx->mysql_thd)) {
+    /* Check if we can now grant waiting lock requests */
 
-	for (lock = first_lock; lock != NULL;
-	     lock = lock_rec_get_next(heap_no, lock)) {
-		if (lock_get_wait(lock)
-		    && !lock_rec_has_to_wait_in_queue(lock)) {
+    for (lock = first_lock; lock != NULL;
+         lock = lock_rec_get_next(heap_no, lock)) {
+      if (lock_get_wait(lock)
+          && !lock_rec_has_to_wait_in_queue(lock)) {
 
-			/* Grant the lock */
-			ut_ad(trx != lock->trx);
-			lock_grant(lock);
-		}
-	}
+        /* Grant the lock */
+        ut_ad(trx != lock->trx);
+        lock_grant(lock);
+      }
+    }
+  } else {
+    space = lock->un_member.rec_lock.space;
+    page_no = lock->un_member.rec_lock.page_no;
+    rec_fold = lock_rec_fold(space, page_no);
+    for (lock = first_lock;
+         lock != NULL;) {
+      // If the lock is a wait lock on this page, and it does not need to wait
+      if ((lock->un_member.rec_lock.space == space)
+          && (lock->un_member.rec_lock.page_no == page_no)
+          && lock_rec_get_nth_bit(lock, heap_no)
+          && lock_get_wait(lock)
+          && !lock_rec_has_to_wait_in_queue(lock)) {
+
+        lock_grant(lock);
+
+        if (previous != NULL) {
+          // Move the lock to the head of the list
+          HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
+          lock_rec_move_to_front(lock, rec_fold);
+        } else {
+          // Already at the head of the list.
+          previous = lock;
+        }
+        // Move on to the next lock
+        lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, previous));
+      } else {
+        previous = lock;
+        lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, lock));
+      }
+    }
+  }
 
 	lock_mutex_exit();
 	trx_mutex_exit(trx);
