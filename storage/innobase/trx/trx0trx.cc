@@ -903,7 +903,8 @@ trx_start_low(
 
 	mutex_exit(&trx_sys->mutex);
 
-	trx->start_time = ut_time();
+  trx->start_time = ut_time();
+  clock_gettime(CLOCK_REALTIME, &trx->start_time_nano);
 
 	MONITOR_INC(MONITOR_TRX_ACTIVE);
 }
