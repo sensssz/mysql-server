@@ -2969,7 +2969,7 @@ lock_rec_dequeue_from_page(
                 select_result = write_first_cost > read_first_cost? 1 : -1;
             } else if (write_lock == NULL) {
                 select_result = 1;
-            } else if (read_chunk.size() > 0) {
+            } else if (read_chunk.size() == 0) {
                 select_result = -1;
             }
             
@@ -4817,7 +4817,7 @@ released:
         while (read_chunk.size() > CHUNK_SIZE) {
             read_chunk.pop_back();
         }
-        write_lock =find_lock_with_max_subtree_size(write_locks);
+        write_lock = find_lock_with_max_subtree_size(write_locks);
         long read_sub_tree_size_total = 0;
         long write_sub_tree_size = 0;
         // 1 for read chunk, -1 for write lock
@@ -4836,7 +4836,7 @@ released:
             select_result = write_first_cost > read_first_cost? 1 : -1;
         } else if (write_lock == NULL) {
             select_result = 1;
-        } else if (read_chunk.size() > 0) {
+        } else if (read_chunk.size() == 0) {
             select_result = -1;
         }
         
