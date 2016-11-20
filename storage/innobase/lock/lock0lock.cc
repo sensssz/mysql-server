@@ -1934,8 +1934,7 @@ lock_rec_create(
 
   ut_ad(index->table->n_ref_count > 0 || !index->table->can_be_evicted);
 
-  if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
-      || thd_is_replication_slave_thread(trx->mysql_thd)) {
+  if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS) {
     HASH_INSERT(lock_t, hash, lock_sys->rec_hash,
                 lock_rec_fold(space, page_no), lock);
   } else {
@@ -2553,32 +2552,30 @@ lock_grant_and_move_on_page(
 	ulint     rec_fold;
 
   rec_fold = lock_rec_fold(space, page_no);
-//	previous = (lock_t *) hash_get_nth_cell(lock_sys->rec_hash,
-//							hash_calc_hash(rec_fold, lock_sys->rec_hash))->node;
-//	if (previous == NULL) {
-//		return;
-//	}
-//	if (previous->un_member.rec_lock.space == space &&
-//		previous->un_member.rec_lock.page_no == page_no) {
-//		lock = previous;
-//	}
-//	else {
-//		next = (lock_t *) previous->hash;
-//		while (next &&
-//				(next->un_member.rec_lock.space != space ||
-//				next->un_member.rec_lock.page_no != page_no)) {
-//			previous = next;
-//			next = (lock_t *) previous->hash;
-//		}
-//		lock = (lock_t *) previous->hash;
-//	}
-//
-//	ut_ad(previous->hash == lock || previous == lock);
+	previous = (lock_t *) hash_get_nth_cell(lock_sys->rec_hash,
+							hash_calc_hash(rec_fold, lock_sys->rec_hash))->node;
+	if (previous == NULL) {
+		return;
+	}
+	if (previous->un_member.rec_lock.space == space &&
+		previous->un_member.rec_lock.page_no == page_no) {
+		lock = previous;
+	}
+	else {
+		next = (lock_t *) previous->hash;
+		while (next &&
+				(next->un_member.rec_lock.space != space ||
+				next->un_member.rec_lock.page_no != page_no)) {
+			previous = next;
+			next = (lock_t *) previous->hash;
+		}
+		lock = (lock_t *) previous->hash;
+	}
+
+	ut_ad(previous->hash == lock || previous == lock);
 	/* Grant locks if there are no conflicting locks ahead.
 	 Move granted locks to the head of the list. */
-  previous = NULL;
-	for (lock = lock_rec_get_first_on_page_addr(space, page_no);
-       lock != NULL;) {
+	for (;lock != NULL;) {
 		/* If the lock is a wait lock on this page, and it does not need to wait. */
 		if ((lock->un_member.rec_lock.space == space)
 			&& (lock->un_member.rec_lock.page_no == page_no)
@@ -2589,17 +2586,17 @@ lock_grant_and_move_on_page(
 			
 			if (previous != NULL) {
 				/* Move the lock to the head of the list. */
-        previous->hash = lock->hash;
+				HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
 				lock_rec_insert_to_head(lock, rec_fold);
 			} else {
 				/* Already at the head of the list. */
 				previous = lock;
 			}
 			/* Move on to the next lock. */
-      lock = (lock_t *) lock->hash;
+			lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, previous));
 		} else {
-      previous = lock;
-      lock = (lock_t *) lock->hash;
+			previous = lock;
+			lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, lock));
 		}
 	}
 }
@@ -2621,7 +2618,9 @@ lock_rec_dequeue_from_page(
 {
 	ulint		space;
 	ulint		page_no;
+  ulint   rec_fold;
   lock_t*		lock;
+  lock_t*   previous;
 	trx_lock_t*	trx_lock;
 
 	ut_ad(lock_mutex_own());
@@ -2632,6 +2631,7 @@ lock_rec_dequeue_from_page(
 
 	space = in_lock->un_member.rec_lock.space;
   page_no = in_lock->un_member.rec_lock.page_no;
+  rec_fold = lock_rec_fold(space, page_no);
 
 	in_lock->index->table->n_rec_locks--;
 
@@ -2657,7 +2657,32 @@ lock_rec_dequeue_from_page(
       }
     }
   } else {
-    lock_grant_and_move_on_page(space, page_no);
+    previous = NULL;
+    for (lock = lock_rec_get_first_on_page_addr(space, page_no);
+         lock != NULL;) {
+      // If the lock is a wait lock on this page, and it does not need to wait
+      if ((lock->un_member.rec_lock.space == space)
+          && (lock->un_member.rec_lock.page_no == page_no)
+          && lock_get_wait(lock)
+          && !lock_rec_has_to_wait_in_queue(lock)) {
+
+        lock_grant(lock);
+
+        if (previous != NULL) {
+          // Move the lock to the head of the list
+          HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
+          lock_rec_move_to_front(lock, rec_fold);
+        } else {
+          // Already at the head of the list.
+          previous = lock;
+        }
+        // Move on to the next lock
+        lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, previous));
+      } else {
+        previous = lock;
+        lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, lock));
+      }
+    }
   }
 
 //	for (lock = lock_rec_get_first_on_page_addr(space, page_no);
@@ -3833,8 +3858,7 @@ lock_get_first_lock(
 	}
 
 	ut_a(lock != NULL);
-	ut_a(lock != ctx->wait_lock
-       || innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS);
+	ut_a(lock != ctx->wait_lock);
 	ut_ad(lock_get_type_low(lock) == lock_get_type_low(ctx->wait_lock));
 
 	return(lock);
@@ -4705,65 +4729,6 @@ lock_table_dequeue(
 }
 
 /*=========================== LOCK RELEASE ==============================*/
-static
-void
-lock_grant_and_move_on_rec(
-	lock_t*		first_lock,
-	ulint			heap_no)
-{
-	lock_t *	lock;
-	lock_t *	previous;
-	ulint		space;
-	ulint		page_no;
-	ulint		rec_fold;
-
-	space = first_lock->un_member.rec_lock.space;
-	page_no = first_lock->un_member.rec_lock.page_no;
-	rec_fold = lock_rec_fold(space, page_no);
-
-	previous = (lock_t *) hash_get_nth_cell(lock_sys->rec_hash,
-							hash_calc_hash(rec_fold, lock_sys->rec_hash))->node;
-	if (previous == NULL) {
-		return;
-	}
-	if (previous == first_lock) {
-		lock = previous;
-	} else {
-		while (previous->hash &&
-				previous->hash != first_lock) {
-			previous = (lock_t *) previous->hash;
-	    }
-		lock = (lock_t *) previous->hash;
-	}
-	/* Grant locks if there are no conflicting locks ahead.
-	 Move granted locks to the head of the list. */
-	for (;lock != NULL;) {
-
-		/* If the lock is a wait lock on this page, and it does not need to wait. */
-		if (lock->un_member.rec_lock.space == space
-			&& lock->un_member.rec_lock.page_no == page_no
-			&& lock_rec_get_nth_bit(lock, heap_no)
-			&& lock_get_wait(lock)
-			&& !lock_rec_has_to_wait_in_queue(lock)) {
-
-			lock_grant(lock);
-
-			if (previous != NULL) {
-				/* Move the lock to the head of the list. */
-				HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
-				lock_rec_insert_to_head(lock, rec_fold);
-			} else {
-				/* Already at the head of the list. */
-				previous = lock;
-			}
-			/* Move on to the next lock. */
-			lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, previous));
-		} else {
-			previous = lock;
-			lock = static_cast<lock_t *>(HASH_GET_NEXT(hash, lock));
-		}
-	}
-}
 
 /*************************************************************//**
 Removes a granted record lock of a transaction from the queue and grants
@@ -4825,27 +4790,20 @@ lock_rec_unlock(
 
 released:
 	ut_a(!lock_get_wait(lock));
-  lock_rec_reset_nth_bit(lock, heap_no);
+	lock_rec_reset_nth_bit(lock, heap_no);
 
-  if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
-      || thd_is_replication_slave_thread(lock->trx->mysql_thd)
-      || true) {
+	/* Check if we can now grant waiting lock requests */
 
-    /* Check if we can now grant waiting lock requests */
+	for (lock = first_lock; lock != NULL;
+	     lock = lock_rec_get_next(heap_no, lock)) {
+		if (lock_get_wait(lock)
+		    && !lock_rec_has_to_wait_in_queue(lock)) {
 
-    for (lock = first_lock; lock != NULL;
-         lock = lock_rec_get_next(heap_no, lock)) {
-      if (lock_get_wait(lock)
-          && !lock_rec_has_to_wait_in_queue(lock)) {
-
-        /* Grant the lock */
-        ut_ad(trx != lock->trx);
-        lock_grant(lock);
-      }
-    }
-  } else {
-    lock_grant_and_move_on_rec(first_lock, heap_no);
-  }
+			/* Grant the lock */
+			ut_ad(trx != lock->trx);
+			lock_grant(lock);
+		}
+	}
 
 	lock_mutex_exit();
 	trx_mutex_exit(trx);
