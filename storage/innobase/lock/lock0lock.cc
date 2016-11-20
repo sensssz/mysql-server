@@ -4825,7 +4825,8 @@ released:
   lock_rec_reset_nth_bit(lock, heap_no);
 
   if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
-      || thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
+      || thd_is_replication_slave_thread(lock->trx->mysql_thd)
+      || true) {
 
     /* Check if we can now grant waiting lock requests */
 
