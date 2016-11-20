@@ -1700,6 +1700,30 @@ lock_rec_move_to_front(
     }
 }
 
+static
+void
+lock_rec_insert_to_head(
+	lock_t *in_lock,   /*!< in: lock to be insert */
+  ulint   rec_fold)  /*!< in: rec_fold of the page */
+{
+    hash_table_t*       hash;
+    hash_cell_t*        cell;
+    lock_t*				node;
+    
+    if (in_lock == NULL) {
+        return;
+    }
+    
+    hash = lock_hash_get(in_lock->type_mode);
+    cell = hash_get_nth_cell(hash,
+                             hash_calc_hash(rec_fold, hash));
+    node = (lock_t *) cell->node;
+    if (node != in_lock) {
+        cell->node = in_lock;
+        in_lock->hash = node;
+    }
+}
+
 
 /**
 Add the lock to the record lock hash and the transaction's lock list
@@ -1721,8 +1745,7 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
     if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
         || thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
-      HASH_INSERT(lock_t, hash, lock_sys->rec_hash,
-                  lock_rec_fold(space, page_no), lock);
+      HASH_INSERT(lock_t, hash, lock_hash, key, lock);
     } else {
       lock_rec_insert_by_trx_age(lock, m_mode & LOCK_WAIT);
     }
@@ -2758,7 +2781,7 @@ lock_rec_dequeue_from_page(
     /* Check if waiting locks in the queue can now be granted: grant
      locks if there are no conflicting locks ahead. Stop at the first
      X lock that is waiting or has been granted. */
-    for (lock = lock_rec_get_first_on_page_addr(space, page_no);
+    for (lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
          lock != NULL;
          lock = lock_rec_get_next_on_page(lock)) {
       if(lock_get_wait(lock) &&
@@ -2768,7 +2791,7 @@ lock_rec_dequeue_from_page(
     }
   } else {
     previous = NULL;
-    for (lock = lock_rec_get_first_on_page_addr(space, page_no);
+    for (lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
          lock != NULL;) {
       // If the lock is a wait lock on this page, and it does not need to wait
       if ((lock->un_member.rec_lock.space == space)
