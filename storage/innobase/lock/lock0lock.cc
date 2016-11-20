@@ -4682,6 +4682,7 @@ lock_rec_unlock(
 	enum lock_mode		lock_mode)/*!< in: LOCK_S or LOCK_X */
 {
 	lock_t*		first_lock;
+  lock_t*   previous;
 	lock_t*		lock;
   ulint   space;
   ulint   page_no;
@@ -4750,6 +4751,7 @@ released:
     space = lock->un_member.rec_lock.space;
     page_no = lock->un_member.rec_lock.page_no;
     rec_fold = lock_rec_fold(space, page_no);
+    previous = NULL;
     for (lock = first_lock;
          lock != NULL;) {
       // If the lock is a wait lock on this page, and it does not need to wait
