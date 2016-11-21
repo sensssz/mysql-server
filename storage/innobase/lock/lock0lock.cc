@@ -1622,8 +1622,9 @@ lock_rec_insert_by_trx_age(
   ulint space = in_lock->un_member.rec_lock.space;
   ulint page_no = in_lock->un_member.rec_lock.page_no;
   ulint rec_fold = lock_rec_fold(space, page_no);
-  hash_cell_t* cell = hash_get_nth_cell(lock_sys->rec_hash,
-                                        hash_calc_hash(rec_fold, lock_sys->rec_hash));
+  hash_table_t* lock_hash = lock_hash_get(in_lock->type_mode);
+  hash_cell_t* cell = hash_get_nth_cell(lock_hash,
+                                        hash_calc_hash(rec_fold, lock_hash));
   
   lock_t *node = (lock_t *) cell->node;
   // If in_lock is not a wait lock, we insert it to the head of the list.
