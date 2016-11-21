@@ -2767,6 +2767,8 @@ innobase_shutdown_for_mysql(void)
 	srv_was_started = FALSE;
 	srv_start_has_been_called = FALSE;
 
+  write_logs();
+
 	return(DB_SUCCESS);
 }
 #endif /* !UNIV_HOTBACKUP */

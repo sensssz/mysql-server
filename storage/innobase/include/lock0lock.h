@@ -56,6 +56,9 @@ class ReadView;
 
 extern my_bool	innobase_deadlock_detect;
 
+void
+write_logs();
+
 /*********************************************************************//**
 Gets the size of a lock struct.
 @return size in bytes */

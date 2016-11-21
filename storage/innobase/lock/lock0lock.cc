@@ -50,6 +50,8 @@ Created 5/7/1996 Heikki Tuuri
 #include "row0mysql.h"
 #include "pars0pars.h"
 
+#include <fstream>
+#include <list>
 #include <set>
 
 /* Flag to enable/disable deadlock detector. */
@@ -70,6 +72,9 @@ static const ulint	TABLE_LOCK_CACHE = 8;
 /** Size in bytes, of the table lock instance */
 static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
+static std::list<int> num_wait_locks;
+static timespec last_update;
+
 /*********************************************************************//**
 Checks if a waiting record lock request still has to wait in a queue.
 @return lock that is causing the wait */
@@ -88,6 +93,16 @@ lock_grant(
 /*=======*/
 	lock_t*	lock,	/*!< in/out: waiting lock request */
     bool    owns_trx_mutex);    /*!< in: whether lock->trx->mutex is owned */
+
+void
+write_logs()
+{
+  std::ofstream log_file("latency/num_waits");
+  for (auto num_waits : num_wait_locks) {
+    log_file << num_waits << std::endl;
+  }
+  log_file.close();
+}
 
 /** Deadlock checker. */
 class DeadlockChecker {
@@ -1616,8 +1631,7 @@ lock_rec_insert_by_trx_age_grant(
 static
 void
 lock_rec_insert_by_trx_age(
-  lock_t *in_lock,
-  bool wait)
+  lock_t *in_lock)
 {
   ulint space = in_lock->un_member.rec_lock.space;
   ulint page_no = in_lock->un_member.rec_lock.page_no;
@@ -1628,7 +1642,7 @@ lock_rec_insert_by_trx_age(
   
   lock_t *node = (lock_t *) cell->node;
   // If in_lock is not a wait lock, we insert it to the head of the list.
-  if (node == NULL || !wait || has_higher_priority(in_lock, node)) {
+  if (node == NULL || !lock_get_wait(in_lock) || has_higher_priority(in_lock, node)) {
     cell->node = in_lock;
     in_lock->hash = node;
     return;
@@ -1735,8 +1749,10 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 {
 	ut_ad(lock_mutex_own());
 	ut_ad(trx_mutex_own(lock->trx));
-    
-  bool wait_lock = m_mode & LOCK_WAIT;
+
+  if (m_mode & LOCK_WAIT) {
+    lock_set_lock_and_trx_wait(lock, lock->trx);
+  }
 
 	if (add_to_hash) {
 		ulint	key = m_rec_id.fold();
@@ -1748,12 +1764,8 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
         || thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
       HASH_INSERT(lock_t, hash, lock_hash, key, lock);
     } else {
-      lock_rec_insert_by_trx_age(lock, m_mode & LOCK_WAIT);
+      lock_rec_insert_by_trx_age(lock);
     }
-	}
-
-	if (wait_lock) {
-		lock_set_lock_and_trx_wait(lock, lock->trx);
 	}
 
 	UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, lock);
@@ -2750,8 +2762,10 @@ lock_rec_dequeue_from_page(
 	ulint		space;
 	ulint		page_no;
   ulint   rec_fold;
+  ulint   num_waits;
 	lock_t*		lock;
   lock_t*   previous;
+  timespec  now;
 	trx_lock_t*	trx_lock;
 	hash_table_t*	lock_hash;
 
@@ -2777,6 +2791,23 @@ lock_rec_dequeue_from_page(
 
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
   MONITOR_DEC(MONITOR_NUM_RECLOCK);
+
+  clock_gettime(CLOCK_REALTIME, &now);
+  if (now.tv_sec - last_update.tv_sec > 5) {
+    num_wait_locks.clear();
+  }
+  last_update = now;
+
+  num_waits = 0;
+  for (lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
+       lock != NULL;
+       lock = lock_rec_get_next_on_page(lock)) {
+    if(lock_get_wait(lock)) {
+      ++num_waits;
+    }
+  }
+  num_wait_locks.push_back(num_waits);
+
   if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
       || thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {
     /* Check if waiting locks in the queue can now be granted: grant
