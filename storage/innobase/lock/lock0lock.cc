@@ -2366,7 +2366,22 @@ lock_rec_has_to_wait_in_queue(
 
 			return(lock);
 		}
-	}
+  }
+
+  for (lock = wait_lock->hash;
+       lock != NULL;
+       lock = lock_rec_get_next_on_page_const(lock)) {
+
+    const byte*	p = (const byte*) &lock[1];
+
+    if (heap_no < lock_rec_get_n_bits(lock)
+        && (p[bit_offset] & bit_mask)
+        && !lock_get_wait(lock)
+        && lock_has_to_wait(wait_lock, lock)) {
+
+      return(lock);
+    }
+  }
 
 	return(NULL);
 }
@@ -2809,7 +2824,8 @@ lock_rec_dequeue_from_page(
   num_wait_locks.push_back(num_waits);
 
   if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
-      || thd_is_replication_slave_thread(in_lock->trx->mysql_thd)) {
+      || thd_is_replication_slave_thread(in_lock->trx->mysql_thd)
+      || true) {
     /* Check if waiting locks in the queue can now be granted: grant
      locks if there are no conflicting locks ahead. Stop at the first
      X lock that is waiting or has been granted. */
@@ -4702,7 +4718,8 @@ released:
 	lock_rec_reset_nth_bit(lock, heap_no);
     
     if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
-        || thd_is_replication_slave_thread(lock->trx->mysql_thd)) {
+        || thd_is_replication_slave_thread(lock->trx->mysql_thd)
+        || true) {
 
         /* Check if we can now grant waiting lock requests */
 
