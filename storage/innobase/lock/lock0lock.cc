@@ -8151,7 +8151,8 @@ DeadlockChecker::check_and_resolve(const lock_t* in_lock, trx_t* trx)
       lock = lock_rec_get_next(heap_no, lock);
     }
     for (; lock != NULL; lock = lock_rec_get_next(heap_no, lock)) {
-      if (!lock_get_wait(lock)) {
+      if (!lock_get_wait(lock)
+          && lock != in_lock) {
         handle_trx_sub_tree_change(lock->trx, sub_tree_size);
       }
     }
