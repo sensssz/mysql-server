@@ -8069,8 +8069,8 @@ DeadlockChecker::check_and_resolve(const lock_t* in_lock, trx_t* trx)
 	check_trx_state(trx);
 	ut_ad(!srv_read_only_mode);
 
-  ulint space = lock->un_member.rec_lock.sapce;
-  ulint page_no = lock->un_member.rec_lock.space;
+  ulint space = lock->un_member.rec_lock.space;
+  ulint page_no = lock->un_member.rec_lock.heap_no;
   ulint heap_no;
   int   sub_tree_size;
   lock_t *lock;
