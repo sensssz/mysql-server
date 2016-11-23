@@ -8069,14 +8069,11 @@ DeadlockChecker::check_and_resolve(const lock_t* in_lock, trx_t* trx)
 	check_trx_state(trx);
 	ut_ad(!srv_read_only_mode);
 
-  ulint space = in_lock->un_member.rec_lock.space;
-  ulint page_no = in_lock->un_member.rec_lock.page_no;
+  ulint space;
+  ulint page_no;
   ulint heap_no;
-  int   sub_tree_size;
   lock_t *lock;
   hash_table_t *lock_hash;
-
-  sub_tree_size = 0;
 
 	/* If transaction is marked for ASYNC rollback then we should
 	not allow it to wait for another lock causing possible deadlock.
@@ -8124,11 +8121,25 @@ DeadlockChecker::check_and_resolve(const lock_t* in_lock, trx_t* trx)
 
 			ut_ad(victim_trx == checker.m_wait_lock->trx);
 
+      lock = victim_trx->lock.wait_lock;
+      lock_hash = lock_hash_get(lock->type_mode);
+      space = lock->un_member.rec_lock.space;
+      page_no = lock->un_member.rec_lock.page_no;
+      heap_no = lock_rec_find_set_bit(lock);
+      lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
+      if (!lock_rec_get_nth_bit(lock, heap_no)) {
+        lock = lock_rec_get_next(heap_no, lock);
+      }
+      for (; lock != NULL; lock = lock_rec_get_next(heap_no, lock)) {
+        if (!lock_get_wait(lock)
+            && lock != in_lock) {
+          handle_trx_sub_tree_change(lock->trx, -victim_trx->sub_tree_size);
+        }
+      }
+
 			checker.trx_rollback();
 
 			lock_deadlock_found = true;
-
-      sub_tree_size -= victim_trx->sub_tree_size;
 
 			MONITOR_INC(MONITOR_DEADLOCK);
 		}
@@ -8141,21 +8152,6 @@ DeadlockChecker::check_and_resolve(const lock_t* in_lock, trx_t* trx)
 		print("*** WE ROLL BACK TRANSACTION (2)\n");
 
 		lock_deadlock_found = true;
-  }
-
-  if (lock_deadlock_found) {
-    lock_hash = lock_hash_get(in_lock->type_mode);
-    heap_no = lock_rec_find_set_bit(in_lock);
-    lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
-    if (!lock_rec_get_nth_bit(lock, heap_no)) {
-      lock = lock_rec_get_next(heap_no, lock);
-    }
-    for (; lock != NULL; lock = lock_rec_get_next(heap_no, lock)) {
-      if (!lock_get_wait(lock)
-          && lock != in_lock) {
-        handle_trx_sub_tree_change(lock->trx, sub_tree_size);
-      }
-    }
   }
 
 	trx_mutex_enter(trx);
