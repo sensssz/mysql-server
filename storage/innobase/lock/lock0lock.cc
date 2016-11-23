@@ -8070,7 +8070,7 @@ DeadlockChecker::check_and_resolve(const lock_t* in_lock, trx_t* trx)
 	ut_ad(!srv_read_only_mode);
 
   ulint space = in_lock->un_member.rec_lock.space;
-  ulint page_no = in_lock->un_member.rec_lock.heap_no;
+  ulint page_no = in_lock->un_member.rec_lock.page_no;
   ulint heap_no;
   int   sub_tree_size;
   lock_t *lock;
