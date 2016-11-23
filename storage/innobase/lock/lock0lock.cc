@@ -2921,14 +2921,12 @@ lock_rec_dequeue_from_page(
         std::unordered_map<ulint, std::vector<lock_t *>> read_chunks;
         std::unordered_map<ulint, std::vector<lock_t *>> write_locks;
         std::set<ulint> heap_nos;
-        std::set<ulint> excluded_heap_nos;
 
         for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
                                                     page_no);
              lock != NULL;
              lock = lock_rec_get_next_on_page(lock)) {
             if (!lock_get_wait(lock)) {
-              excluded_heap_nos.insert();
                 continue;
             }
             heap_no = lock_rec_find_set_bit(lock);
