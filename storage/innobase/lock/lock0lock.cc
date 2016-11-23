@@ -8064,12 +8064,21 @@ transaction was chosen as a victim and rolled back or no deadlock found.
 
 @return transaction instanace chosen as victim or 0 */
 const trx_t*
-DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
+DeadlockChecker::check_and_resolve(const lock_t* in_lock, trx_t* trx)
 {
 	ut_ad(lock_mutex_own());
 	ut_ad(trx_mutex_own(trx));
 	check_trx_state(trx);
 	ut_ad(!srv_read_only_mode);
+
+  ulint space = lock->un_member.rec_lock.sapce;
+  ulint page_no = lock->un_member.rec_lock.space;
+  ulint heap_no;
+  int   sub_tree_size;
+  lock_t *lock;
+  hash_table_t *lock_hash;
+
+  sub_tree_size = 0;
 
 	/* If transaction is marked for ASYNC rollback then we should
 	not allow it to wait for another lock causing possible deadlock.
@@ -8094,7 +8103,7 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 
 	/* Try and resolve as many deadlocks as possible. */
 	do {
-		DeadlockChecker	checker(trx, lock, s_lock_mark_counter);
+		DeadlockChecker	checker(trx, in_lock, s_lock_mark_counter);
 
 		victim_trx = checker.search();
 
@@ -8107,7 +8116,7 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 			ut_ad(trx == checker.m_start);
 			ut_ad(trx == victim_trx);
 
-			rollback_print(victim_trx, lock);
+			rollback_print(victim_trx, in_lock);
 
 			MONITOR_INC(MONITOR_DEADLOCK);
 
@@ -8121,6 +8130,8 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 
 			lock_deadlock_found = true;
 
+      sub_tree_size -= victim_trx->sub_tree_size;
+
 			MONITOR_INC(MONITOR_DEADLOCK);
 		}
 
@@ -8132,7 +8143,21 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 		print("*** WE ROLL BACK TRANSACTION (2)\n");
 
 		lock_deadlock_found = true;
-	}
+  }
+
+  if (lock_deadlock_found) {
+    lock_hash = lock_hash_get(in_lock->type_mode);
+    heap_no = lock_rec_find_set_bit(in_lock);
+    lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
+    if (!lock_rec_get_nth_bit(lock, heap_no)) {
+      lock = lock_rec_get_next(heap_no, lock);
+    }
+    for (; lock != NULL; lock = lock_rec_get_next(heap_no, lock)) {
+      if (!lock_get_wait(lock)) {
+        handle_trx_sub_tree_change(lock->trx, sub_tree_size);
+      }
+    }
+  }
 
 	trx_mutex_enter(trx);
 
