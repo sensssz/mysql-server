@@ -1534,7 +1534,9 @@ lock_rec_get_first(
   ulint   heap_no)
 {
   lock_t *lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
-  if (lock != NULL && !lock_rec_get_nth_bit(lock, heap_no)) {
+  if (lock != NULL
+      && (lock_rec_get_n_bits(lock) <= heap_no
+      || !lock_rec_get_nth_bit(lock, heap_no))) {
     lock = lock_rec_get_next(heap_no, lock);
   }
   return lock;
