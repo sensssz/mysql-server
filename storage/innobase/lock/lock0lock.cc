@@ -2290,7 +2290,7 @@ lock_rec_has_to_wait_granted(
 	hash = lock_hash_get(wait_lock->type_mode);
 
 	for (lock = lock_rec_get_first_on_page_addr(hash, space, page_no);
-	     lock != wait_lock;
+	     lock != NULL;
 	     lock = lock_rec_get_next_on_page_const(lock)) {
 
 		const byte*	p = (const byte*) &lock[1];
@@ -2786,6 +2786,7 @@ lock_rec_dequeue_from_page(
             if (lock_rec_get_nth_bit(in_lock, heap_no) &&
                 !lock_rec_has_to_wait_granted(lock)) {
                 heap_nos.insert(heap_no);
+                lock->trx->sub_tree_size = get_sub_tree_size(lock->trx);
                 if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S) {
                     read_chunks[heap_no].push_back(lock);
                 } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X) {
@@ -4654,7 +4655,7 @@ released:
         for (lock = first_lock; lock != NULL;
              lock = lock_rec_get_next(heap_no, lock)) {
             if (!lock_get_wait(lock)
-                || !lock_rec_has_to_wait_granted(lock)) {
+                || lock_rec_has_to_wait_granted(lock)) {
                 continue;
             }
             lock->trx->sub_tree_size = get_sub_tree_size(lock->trx);
