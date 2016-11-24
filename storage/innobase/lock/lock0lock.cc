@@ -7929,12 +7929,6 @@ DeadlockChecker::check_and_resolve(const lock_t* in_lock, trx_t* trx)
 	check_trx_state(trx);
 	ut_ad(!srv_read_only_mode);
 
-  ulint space;
-  ulint page_no;
-  ulint heap_no;
-  lock_t *lock;
-  hash_table_t *lock_hash;
-
 	/* If transaction is marked for ASYNC rollback then we should
 	not allow it to wait for another lock causing possible deadlock.
 	We return current transaction as deadlock victim here. */
