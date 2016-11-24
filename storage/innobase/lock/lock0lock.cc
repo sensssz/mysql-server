@@ -1541,38 +1541,6 @@ lock_rec_get_first(
   return lock;
 }
 
-/*********************************************************************//**
-Check if lock1 has higher priority than lock2.
-NULL has lowest priority.
-If either is a high priority transaction, the lock has higher priority.
-If neither of them is wait lock, the first one has higher priority.
-If only one of them is a wait lock, it has lower priority.
-Otherwise, the one with an older transaction has higher priority.
-@returns true if lock1 has higher priority, false otherwise. */
-bool
-has_higher_priority(
-	lock_t *lock1,
-	lock_t *lock2)
-{
-	if (lock1 == NULL) {
-		return false;
-	} else if (lock2 == NULL) {
-		return true;
-	}
-    if (trx_is_high_priority(lock1->trx)) {
-        return true;
-    }
-    if (trx_is_high_priority(lock2->trx)) {
-        return false;
-    }
-	if (!lock_get_wait(lock1)) {
-		return true;
-	} else if (!lock_get_wait(lock2)) {
-		return false;
-	}
-	return lock1->trx->sub_tree_size >= lock2->trx->sub_tree_size;
-}
-
 static
 long
 get_sub_tree_size(
@@ -1629,42 +1597,6 @@ reset_sub_tree_size()
        trx = UT_LIST_GET_NEXT(trx_list, trx)) {
     trx->sub_tree_size = 0;
   }
-}
-
-static
-bool
-lock_queue_validate(
-	const lock_t  *in_lock) /*!< in: lock whose hash list is to be validated */
-{
-    ulint               space;
-    ulint               page_no;
-    ulint				rec_fold;
-    hash_table_t*       hash;
-    hash_cell_t*        cell;
-    lock_t*				next;
-    bool                wait_lock = false;
-    
-    if (in_lock == NULL) {
-        return true;
-    }
-    
-    space = in_lock->un_member.rec_lock.space;
-    page_no = in_lock->un_member.rec_lock.page_no;
-    rec_fold = lock_rec_fold(space, page_no);
-    hash = lock_hash_get(in_lock->type_mode);
-    cell = hash_get_nth_cell(hash,
-                             hash_calc_hash(rec_fold, hash));
-    next = (lock_t *) cell->node;
-    while (next != NULL) {
-        // If this is a granted lock, check that there's no wait lock before it.
-        if (!lock_get_wait(next)) {
-            ut_a(!wait_lock);
-        } else {
-            wait_lock = true;
-        }
-        next = next->hash;
-    }
-    return true;
 }
 
 /**
@@ -2788,10 +2720,11 @@ lock_rec_dequeue_from_page(
             if (lock_rec_get_nth_bit(in_lock, heap_no) &&
                 !lock_rec_has_to_wait_granted(lock)) {
                 heap_nos.insert(heap_no);
-                lock->trx->sub_tree_size = get_sub_tree_size(lock->trx);
                 if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S) {
+                    lock->trx->sub_tree_size = get_sub_tree_size(lock->trx);
                     read_chunks[heap_no].push_back(lock);
                 } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X) {
+                    lock->trx->sub_tree_size = get_sub_tree_size(lock->trx);
                     write_locks[heap_no].push_back(lock);
                 }
             }
@@ -4660,10 +4593,11 @@ released:
                 || lock_rec_has_to_wait_granted(lock)) {
                 continue;
             }
-            lock->trx->sub_tree_size = get_sub_tree_size(lock->trx);
             if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_S) {
+                lock->trx->sub_tree_size = get_sub_tree_size(lock->trx);
                 read_chunk.push_back(lock);
             } else if ((lock->type_mode & LOCK_MODE_MASK) == LOCK_X) {
+                lock->trx->sub_tree_size = get_sub_tree_size(lock->trx);
                 write_locks.push_back(lock);
             }
         }
@@ -5941,9 +5875,6 @@ lock_rec_queue_validate(
 			ut_a(lock_rec_has_to_wait_in_queue(lock));
 		}
 	}
-    
-    ut_ad(innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS ||
-          lock_queue_validate(lock));
 
 func_exit:
 	if (!locked_lock_trx_sys) {
