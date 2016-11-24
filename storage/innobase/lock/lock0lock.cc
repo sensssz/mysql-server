@@ -1562,7 +1562,7 @@ get_sub_tree_size(
   for (trx_lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
        trx_lock != NULL;
        trx_lock = UT_LIST_GET_NEXT(trx_locks, trx_lock)) {
-    if (lock_get_wait(trx_lock)) {
+    if (lock_get_wait(trx_lock) || lock_get_type_low(trx_lock) != LOCK_REC) {
       continue;
     }
     space = trx_lock->un_member.rec_lock.space;
