@@ -1535,8 +1535,7 @@ lock_rec_get_first(
 {
   lock_t *lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
   if (lock != NULL
-      && (lock_rec_get_n_bits(lock) <= heap_no
-      || !lock_rec_get_nth_bit(lock, heap_no))) {
+      && !lock_rec_get_nth_bit(lock, heap_no)) {
     lock = lock_rec_get_next(heap_no, lock);
   }
   return lock;
@@ -1608,7 +1607,8 @@ get_sub_tree_size(
       for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
            lock != NULL;
            lock = lock_rec_get_next(heap_no, lock)) {
-        if (lock_get_wait(lock)) {
+        if (lock_get_wait(lock)
+            && lock->trx != trx) {
           sub_tree_size += get_sub_tree_size(lock->trx);
         }
       }
