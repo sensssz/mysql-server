@@ -1259,7 +1259,7 @@ struct trx_t {
 					error, or empty. */
 	FlushObserver*	flush_observer;	/*!< flush observer */
     
-    lint        sub_tree_size;
+    long        sub_tree_size;
     bool        size_updated;
 
 #ifdef UNIV_DEBUG

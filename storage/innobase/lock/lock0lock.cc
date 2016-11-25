@@ -2426,7 +2426,6 @@ lock_rec_has_to_wait_granted(
 		const byte*	p = (const byte*) &lock[1];
 
 		if (!lock_get_wait(lock)
-        && !lock->batch_scheduled
         && heap_no < lock_rec_get_n_bits(lock)
 		    && (p[bit_offset] & bit_mask)) {
 
@@ -2922,7 +2921,7 @@ lock_rec_dequeue_from_page(
         std::unordered_map<ulint, std::vector<lock_t *>> read_chunks;
         std::unordered_map<ulint, std::vector<lock_t *>> write_locks;
         std::set<ulint> heap_nos;
-        
+
         for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
                                                     page_no);
              lock != NULL;
@@ -2942,7 +2941,6 @@ lock_rec_dequeue_from_page(
             }
         }
         for (auto heap_no : heap_nos) {
-            TraceTool::get_instance()->get_log() << heap_no << endl;
             lint read_sub_tree_size_total = 0;
             lint write_sub_tree_size = 0;
             auto &read_chunk = read_chunks[heap_no];
@@ -2969,7 +2967,7 @@ lock_rec_dequeue_from_page(
                 select_result = write_first_cost > read_first_cost? 1 : -1;
             } else if (write_lock == NULL) {
                 select_result = 1;
-            } else if (read_chunk.size() > 0) {
+            } else if (read_chunk.size() == 0) {
                 select_result = -1;
             }
             
@@ -2986,7 +2984,6 @@ lock_rec_dequeue_from_page(
                 lock_grant(write_lock, false);
             }
         }
-        TraceTool::get_instance()->get_log() << endl;
     }
     
     for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
@@ -4817,7 +4814,7 @@ released:
         while (read_chunk.size() > CHUNK_SIZE) {
             read_chunk.pop_back();
         }
-        write_lock =find_lock_with_max_subtree_size(write_locks);
+        write_lock = find_lock_with_max_subtree_size(write_locks);
         long read_sub_tree_size_total = 0;
         long write_sub_tree_size = 0;
         // 1 for read chunk, -1 for write lock
@@ -4836,7 +4833,7 @@ released:
             select_result = write_first_cost > read_first_cost? 1 : -1;
         } else if (write_lock == NULL) {
             select_result = 1;
-        } else if (read_chunk.size() > 0) {
+        } else if (read_chunk.size() == 0) {
             select_result = -1;
         }
         
@@ -8065,12 +8062,18 @@ transaction was chosen as a victim and rolled back or no deadlock found.
 
 @return transaction instanace chosen as victim or 0 */
 const trx_t*
-DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
+DeadlockChecker::check_and_resolve(const lock_t* in_lock, trx_t* trx)
 {
 	ut_ad(lock_mutex_own());
 	ut_ad(trx_mutex_own(trx));
 	check_trx_state(trx);
 	ut_ad(!srv_read_only_mode);
+
+  ulint space;
+  ulint page_no;
+  ulint heap_no;
+  lock_t *lock;
+  hash_table_t *lock_hash;
 
 	/* If transaction is marked for ASYNC rollback then we should
 	not allow it to wait for another lock causing possible deadlock.
@@ -8095,7 +8098,7 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 
 	/* Try and resolve as many deadlocks as possible. */
 	do {
-		DeadlockChecker	checker(trx, lock, s_lock_mark_counter);
+		DeadlockChecker	checker(trx, in_lock, s_lock_mark_counter);
 
 		victim_trx = checker.search();
 
@@ -8108,7 +8111,7 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 			ut_ad(trx == checker.m_start);
 			ut_ad(trx == victim_trx);
 
-			rollback_print(victim_trx, lock);
+			rollback_print(victim_trx, in_lock);
 
 			MONITOR_INC(MONITOR_DEADLOCK);
 
@@ -8117,6 +8120,22 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 		} else if (victim_trx != NULL && victim_trx != trx) {
 
 			ut_ad(victim_trx == checker.m_wait_lock->trx);
+
+      lock = victim_trx->lock.wait_lock;
+      lock_hash = lock_hash_get(lock->type_mode);
+      space = lock->un_member.rec_lock.space;
+      page_no = lock->un_member.rec_lock.page_no;
+      heap_no = lock_rec_find_set_bit(lock);
+      lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
+      if (!lock_rec_get_nth_bit(lock, heap_no)) {
+        lock = lock_rec_get_next(heap_no, lock);
+      }
+      for (; lock != NULL; lock = lock_rec_get_next(heap_no, lock)) {
+        if (!lock_get_wait(lock)
+            && lock != in_lock) {
+          handle_trx_sub_tree_change(lock->trx, -victim_trx->sub_tree_size);
+        }
+      }
 
 			checker.trx_rollback();
 
@@ -8133,7 +8152,7 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 		print("*** WE ROLL BACK TRANSACTION (2)\n");
 
 		lock_deadlock_found = true;
-	}
+  }
 
 	trx_mutex_enter(trx);
 
