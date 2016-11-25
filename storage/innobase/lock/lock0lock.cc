@@ -1554,11 +1554,13 @@ get_sub_tree_size(
   lock_t*       trx_lock;
   hash_table_t*	lock_hash;
 
-  if (trx->sub_tree_size > 0) {
+  if (trx->sub_tree_size > 0
+      || trx->size_updated) {
     return trx->sub_tree_size;
   }
 
-  sub_tree_size = 0;
+  sub_tree_size = 1;
+  trx->size_updated = true;
   for (trx_lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
        trx_lock != NULL;
        trx_lock = UT_LIST_GET_NEXT(trx_locks, trx_lock)) {
@@ -1584,6 +1586,7 @@ get_sub_tree_size(
   }
 
   trx->sub_tree_size = sub_tree_size;
+  trx->size_updated = false;
   return sub_tree_size;
 }
 
