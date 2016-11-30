@@ -2695,7 +2695,7 @@ lock_rec_dequeue_from_page(
       for (i = 0; i < wait_locks.size(); ++i) {
         lock = wait_locks[i];
         if (!lock_rec_has_to_wait_granted(lock, granted_locks)) {
-          lock_grant(lock, false);
+          lock_grant(lock);
           HASH_DELETE(lock_t, hash, lock_sys->rec_hash,
                       rec_fold, lock);
           lock_rec_move_to_front(lock, rec_fold);
@@ -4836,7 +4836,7 @@ released:
     for (i = 0; i < wait_locks.size(); ++i) {
       lock = wait_locks[i];
       if (!lock_rec_has_to_wait_granted(lock, granted_locks)) {
-        lock_grant(lock, false);
+        lock_grant(lock);
         HASH_DELETE(lock_t, hash, lock_sys->rec_hash,
                     rec_fold, lock);
         lock_rec_move_to_front(lock, rec_fold);
