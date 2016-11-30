@@ -2666,6 +2666,7 @@ lock_rec_dequeue_from_page(
       total_schedule = 0;
       has_diff_schedule = 0;
     }
+    last_update = now;
 
     for (heap_no = 0; heap_no < lock_rec_get_n_bits(in_lock); ++heap_no) {
       if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
