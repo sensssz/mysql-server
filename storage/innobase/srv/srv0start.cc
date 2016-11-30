@@ -3119,7 +3119,9 @@ innobase_shutdown_for_mysql(void)
 	}
 
 	srv_was_started = FALSE;
-	srv_start_has_been_called = FALSE;
+  srv_start_has_been_called = FALSE;
+
+  fprintf(stderr, "Schedule statistics: %lf,%lf,%lf\n", total_schedule, has_diff_schedule, has_diff_schedule / total_schedule);
 
 	return(DB_SUCCESS);
 }
