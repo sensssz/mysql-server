@@ -78,6 +78,8 @@ ulong innodb_lock_schedule_algorithm = INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS;
 
 double total_schedule = 0;
 double has_diff_schedule = 0;
+double schedule_total = 0;
+double schedule_diff = 0;
 time_t last_update = 0;
 
 /* An explicit record lock affects both the record and the gap before it.
@@ -2702,6 +2704,8 @@ lock_rec_dequeue_from_page(
         int diff = set_diff(fcfs_granted, vats_granted);
         total_schedule++;
         has_diff_schedule += diff > 0;
+        schedule_total += fcfs_granted.size() + vats_granted.size() - 2 * granted_locks.size();
+        schedule_diff += diff;
       }
       for (i = 0; i < wait_locks.size(); ++i) {
         lock = wait_locks[i];

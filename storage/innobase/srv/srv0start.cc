@@ -3122,6 +3122,7 @@ innobase_shutdown_for_mysql(void)
   srv_start_has_been_called = FALSE;
 
   ib_logf(IB_LOG_LEVEL_INFO, "Schedule statistics: %lf,%lf,%lf\n", total_schedule, has_diff_schedule, has_diff_schedule / total_schedule);
+  ib_logf(IB_LOG_LEVEL_INFO, "Schedule count: %lf,%lf,%lf\n", schedule_total, schedule_diff, schedule_diff / schedule_total);
 
 	return(DB_SUCCESS);
 }
