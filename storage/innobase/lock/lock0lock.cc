@@ -2800,7 +2800,7 @@ ldsf_finish_time(
 
 static
 void
-ldfs_grant(
+ldsf_grant(
 	hash_table_t *lock_hash,
 	lock_t *released_lock,
 	ulint   heap_no)
@@ -2963,7 +2963,7 @@ lock_rec_dequeue_from_page(
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
 	MONITOR_DEC(MONITOR_NUM_RECLOCK);
 
-	if (!use_vats(in_lock->trx)) {
+	if (use_fcfs(in_lock->trx)) {
 
 		/* Check if waiting locks in the queue can now be granted:
 		 grant locks if there are no conflicting locks ahead. Stop at
@@ -2987,7 +2987,11 @@ lock_rec_dequeue_from_page(
 			if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
 				continue;
 			}
-			vats_grant(lock_hash, in_lock, heap_no);
+			if (use_vats(in_lock->trx)) {
+				vats_grant(lock_hash, in_lock, heap_no);
+			} else if(use_ldsf(in_lock->trx)) {
+				ldsf_grant(lock_hash, in_lock, heap_no);
+			}
 		}
 	}
 }
@@ -4778,7 +4782,7 @@ released:
 	ut_a(!lock_get_wait(lock));
 	lock_rec_reset_nth_bit(lock, heap_no);
 
-	if (!use_vats(trx)) {
+	if (use_fcfs(trx)) {
 
 		/* Check if we can now grant waiting lock requests */
 
@@ -4792,8 +4796,10 @@ released:
 				lock_grant(lock);
 			}
 		}
-	} else {
+	} else if (use_vats(trx)) {
 		vats_grant(lock_sys->rec_hash, lock, heap_no);
+	} else if (use_ldsf(trx)) {
+		ldsf_grant(lock_sys->rec_hash, lock, heap_no);
 	}
 
 	lock_mutex_exit();
