@@ -2811,9 +2811,8 @@ ldsf_grant(
 	ulint     i;
 	ulint     j;
 	int				select_result;
-	long				actual_chunk_size;
+	ulint			actual_chunk_size;
 	bool				has_granted_lock;
-	long      sub_dep_size_total;
 	long      add_dep_size_total;
 	long      dep_size_compsensate;
 	long				read_dep_size_total;
@@ -2822,7 +2821,6 @@ ldsf_grant(
 	double			write_lock_cost;
 	lock_t*		lock;
 	lock_t*		wait_lock;
-	lock_t*		new_granted_lock;
 	lock_t*		write_lock;
 	std::vector<lock_t *> write_locks;
 	std::vector<lock_t *> read_locks;
