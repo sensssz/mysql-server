@@ -51,10 +51,13 @@ enum innodb_lock_schedule_algorithm_t {
 	/*!< First Come First Served */
 	INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS,
 	/*!< Variance-Aware-Transaction-Scheduling */
-	INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
+	INNODB_LOCK_SCHEDULE_ALGORITHM_VATS,
+	/*!< Largest dependency set first */
+	INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF,
 };
 
 extern ulong innodb_lock_schedule_algorithm;
+extern ulong innodb_ldsf_chunk_size;
 
 /*********************************************************************//**
 Gets the size of a lock struct.

@@ -304,6 +304,7 @@ static TYPELIB innodb_default_row_format_typelib = {
 static const char* innodb_lock_schedule_algorithm_names[] = {
 	"fcfs",
 	"vats",
+	"ldsf",
 	NullS
 };
 
@@ -19545,16 +19546,23 @@ static MYSQL_SYSVAR_ULONG(doublewrite_batch_size, srv_doublewrite_batch_size,
 #endif /* defined UNIV_DEBUG || defined UNIV_PERF_DEBUG */
 
 static MYSQL_SYSVAR_ENUM(lock_schedule_algorithm, innodb_lock_schedule_algorithm,
-  PLUGIN_VAR_RQCMDARG,
+  PLUGIN_VAR_OPCMDARG,
   "The algorithm Innodb uses for deciding which locks to grant next when"
   " a lock is released. Possible values are"
   " FCFS"
   " grant the locks in First-Come-First-Served order;"
   " VATS"
   " use the Variance-Aware-Transaction-Scheduling algorithm, which"
-  " uses an Eldest-Transaction-First heuristic.",
+  " uses an Eldest-Transaction-First heuristic;"
+  " LDSF"
+  " grant the locks in Largest-Dependency-Set-First order;",
   NULL, NULL, INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS,
   &innodb_lock_schedule_algorithm_typelib);
+
+static MYSQL_SYSVAR_ULONG(ldsf_chunk_size, innodb_ldsf_chunk_size,
+  PLUGIN_VAR_OPCMDARG,
+  "Chunk size for the LDSF scheduling algorithm.",
+  NULL, NULL, 5, 0, ULONG_MAX, 0);
 
 static MYSQL_SYSVAR_ULONG(buffer_pool_instances, srv_buf_pool_instances,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,

@@ -59,6 +59,8 @@ my_bool	innobase_deadlock_detect = TRUE;
 /** Lock scheduling algorithm */
 ulong innodb_lock_schedule_algorithm = INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS;
 
+ulong innodb_ldsf_chunk_size = 5;
+
 /** Total number of cached record locks */
 static const ulint	REC_LOCK_CACHE = 8;
 
@@ -1534,11 +1536,31 @@ has_higher_priority(
 
 static
 bool
+use_fcfs(
+    trx_t *trx)
+{
+    return innodb_lock_schedule_algorithm ==
+		   INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
+		|| !thd_is_replication_slave_thread(trx->mysql_thd);
+}
+
+static
+bool
 use_vats(
     trx_t *trx)
 {
     return innodb_lock_schedule_algorithm ==
 		   INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
+		&& !thd_is_replication_slave_thread(trx->mysql_thd);
+}
+
+static
+bool
+use_ldsf(
+    trx_t *trx)
+{
+    return innodb_lock_schedule_algorithm ==
+		   INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF
 		&& !thd_is_replication_slave_thread(trx->mysql_thd);
 }
 
@@ -2728,6 +2750,160 @@ vats_grant(
 			update_dep_size(lock->trx, sub_dep_size_total + dep_size_compsensate);
 		}
 	}
+	for (i = 0; i < new_granted.size(); ++i) {
+		lock = new_granted[i];
+		dep_size_compsensate = 0;
+		for (j = 0; j < wait_locks.size(); ++j) {
+			wait_lock = wait_locks[j];
+			if (lock_get_wait(wait_lock)
+				&& lock->trx == wait_lock->trx) {
+				dep_size_compsensate -= lock->trx->dep_size + 1;
+			}
+		}
+		if (lock->trx != released_lock->trx) {
+			update_dep_size(lock->trx, add_dep_size_total + dep_size_compsensate);
+		}
+	}
+}
+
+static
+lock_t *
+lock_rec_find_max_dep_size(
+	std::vector<lock_t *> &locks)
+{
+	ulint		i;
+	lock_t *max_dep_lock;
+	lock_t *lock;
+
+	if (locks.size() == 0) {
+		return NULL;
+	}
+
+	max_dep_lock = locks[0];
+	for (i = 1; i < locks.size(); ++i) {
+		lock = locks[i];
+		if (lock->trx->dep_size > max_dep_lock->trx->dep_size) {
+			max_dep_lock = lock;
+		}
+	}
+
+	return max_dep_lock;
+}
+
+static
+double
+ldsf_finish_time(
+	int chunk_size)
+{
+	return log2(chunk_size + 1);
+}
+
+static
+void
+ldfs_grant(
+	hash_table_t *lock_hash,
+	lock_t *released_lock,
+	ulint   heap_no)
+{
+	ulint			space;
+	ulint			page_no;
+	ulint			rec_fold;
+	ulint     i;
+	ulint     j;
+	int				select_result;
+	long				actual_chunk_size;
+	bool				has_granted_lock;
+	long      sub_dep_size_total;
+	long      add_dep_size_total;
+	long      dep_size_compsensate;
+	long				read_dep_size_total;
+	long				write_dep_size;
+	double			read_lock_cost;
+	double			write_lock_cost;
+	lock_t*		lock;
+	lock_t*		wait_lock;
+	lock_t*		new_granted_lock;
+	lock_t*		write_lock;
+	std::vector<lock_t *> write_locks;
+	std::vector<lock_t *> read_locks;
+	std::vector<lock_t *> wait_locks;
+	std::vector<lock_t *> granted_locks;
+	std::vector<lock_t *> new_granted;
+
+	i = 0;
+	has_granted_lock = false;
+	sub_dep_size_total = 0;
+	add_dep_size_total = 0;
+	space = released_lock->un_member.rec_lock.space;
+	page_no = released_lock->un_member.rec_lock.page_no;
+	rec_fold = lock_rec_fold(space, page_no);
+	for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
+		 lock != NULL;
+		 lock = lock_rec_get_next(heap_no, lock)) {
+		if (!lock_get_wait(lock)) {
+			has_granted_lock = true;
+			break;
+		} else {
+			lock->trx->seq = i++;
+			wait_locks.push_back(lock);
+			if (lock_get_mode(lock) == LOCK_S) {
+				read_locks.push_back(lock);
+			} else if (lock_get_mode(lock) == LOCK_S) {
+				write_locks.push_back(lock);
+			}
+		}
+	}
+
+	if (has_granted_lock) {
+		return;
+	}
+
+	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
+	actual_chunk_size = std::min(wait_locks.size(), innodb_ldsf_chunk_size);
+	read_dep_size_total = 0;
+	for (i = 1; i < actual_chunk_size; ++i) {
+		lock = read_locks[i];
+		read_dep_size_total += lock->trx->dep_size;
+	}
+	write_lock = lock_rec_find_max_dep_size(write_locks);
+	write_dep_size = write_lock ? write_lock->trx->dep_size : 0;
+
+	select_result = 0;
+	if (actual_chunk_size > 0
+			&& write_lock != NULL) {
+		read_lock_cost = read_dep_size_total + actual_chunk_size;
+		write_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
+		select_result = (read_lock_cost < write_lock_cost) ? 1 : -1;
+	} else if (write_lock != NULL) {
+		select_result = -1;
+	} else if (actual_chunk_size > 0) {
+		select_result = 1;
+	}
+
+	if (select_result == 1) {
+		for (i = 1; i < actual_chunk_size; ++i) {
+			lock = read_locks[i];
+			lock_grant(lock);
+			HASH_DELETE(lock_t, hash, lock_hash,
+									rec_fold, lock);
+			lock_rec_insert_to_head(lock_hash, lock, rec_fold);
+			new_granted.push_back(lock);
+		}
+	} else if (select_result == -1) {
+		lock_grant(write_lock);
+		HASH_DELETE(lock_t, hash, lock_hash,
+								rec_fold, write_lock);
+		lock_rec_insert_to_head(lock_hash, write_lock, rec_fold);
+		new_granted.push_back(write_lock);
+	}
+
+	for (i = 0; i < wait_locks.size(); ++i) {
+		lock = wait_locks[i];
+		if (lock_get_wait(lock)) {
+			add_dep_size_total += lock->trx->dep_size + 1;
+		}
+	}
+
 	for (i = 0; i < new_granted.size(); ++i) {
 		lock = new_granted[i];
 		dep_size_compsensate = 0;
