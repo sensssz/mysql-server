@@ -2830,7 +2830,6 @@ ldsf_grant(
 
 	i = 0;
 	has_granted_lock = false;
-	sub_dep_size_total = 0;
 	add_dep_size_total = 0;
 	space = released_lock->un_member.rec_lock.space;
 	page_no = released_lock->un_member.rec_lock.page_no;
