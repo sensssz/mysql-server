@@ -7772,7 +7772,7 @@ DeadlockChecker::get_first_lock(ulint* heap_no) const
 	/* Must find at least two locks, otherwise there cannot be a
 	waiting lock, secondly the first lock cannot be the wait_lock. */
 	ut_a(lock != NULL);
-	ut_a(lock != m_wait_lock || use_vats(lock->trx));
+	ut_a(lock != m_wait_lock || use_vats(lock->trx) || use_ldsf(lock->trx));
 
 	/* Check that the lock type doesn't change. */
 	ut_ad(lock_get_type_low(lock) == lock_get_type_low(m_wait_lock));
