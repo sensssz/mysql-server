@@ -2924,6 +2924,56 @@ ldsf_grant(
 	}
 }
 
+static
+void
+lock_rec_grant_non_rw_locks(
+	hash_table_t *lock_hash,
+	ulint	space,
+	ulint	page_no)
+{
+	ulint     i;
+	ulint     j;
+	ulint			heap_no;
+	long      wait_dep_size_total;
+	trx_t*			trx;
+	lock_t*		lock;
+	std::vector<lock_t *> wait_locks;
+	std::vector<lock_t *> new_granted;
+
+	for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
+																							page_no);
+			 lock != NULL;
+			 lock = lock_rec_get_next_on_page(lock)) {
+
+		if (lock_get_wait(lock)
+				&& lock_get_mode(lock) != LOCK_S
+				&& lock_get_mode(lock) != LOCK_X
+				&& !lock_rec_has_to_wait_in_queue(lock)) {
+
+			new_granted.push_back(lock);
+			lock_grant(lock);
+			HASH_DELETE(lock_t, hash, lock_hash,
+									rec_fold, lock);
+			lock_rec_insert_to_head(lock_hash, lock, lock_rec_fold(space, page_no));
+		} else if (lock_get_wait(lock)) {
+			wait_locks.push_back(lock);
+		}
+	}
+	for (i = 0; i < new_granted.size(); ++i) {
+		heap_no = lock_rec_find_set_bit(new_granted[i]);
+		trx = new_granted[i]->trx;
+		wait_dep_size_total = 0;
+		for (j = 0; j < wait_locks.size(); ++j) {
+			lock = wait_locks[j];
+			if (lock->trx != trx
+					&& lock_rec_get_nth_bit(lock, heap_no)) {
+				wait_dep_size_total += lock->trx->dep_size + 1;
+			}
+		}
+		update_dep_size(trx, wait_dep_size_total);
+	}
+}
+
 /*************************************************************//**
 Removes a record lock request, waiting or granted, from the queue and
 grants locks to other transactions in the queue if they now are entitled
@@ -2995,21 +3045,7 @@ lock_rec_dequeue_from_page(
 				vats_grant(lock_hash, in_lock, heap_no);
 			} else if(use_ldsf(in_lock->trx)) {
 				ldsf_grant(lock_hash, in_lock, heap_no);
-				for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
-																										page_no);
-						 lock != NULL;
-						 lock = lock_rec_get_next_on_page(lock)) {
-
-					if (lock_get_wait(lock)
-							&& lock_get_mode(lock) != LOCK_S
-							&& lock_get_mode(lock) != LOCK_X
-							&& !lock_rec_has_to_wait_in_queue(lock)) {
-
-						/* Grant the lock */
-						ut_ad(lock->trx != in_lock->trx);
-						lock_grant(lock);
-					}
-				}
+				lock_rec_grant_non_rw_locks(lock_hash, space, page_no);
 			}
 		}
 	}
@@ -4741,6 +4777,55 @@ run_again:
 
 /*=========================== LOCK RELEASE ==============================*/
 
+static
+void
+lock_rec_grant_non_rw_locks(
+	hash_table_t *lock_hash,
+	lock_t				 *first_lock,
+	ulint	space,
+	ulint	page_no,
+	ulint	heap_no)
+{
+	ulint     i;
+	ulint     j;
+	long      wait_dep_size_total;
+	trx_t*			trx;
+	lock_t*		lock;
+	std::vector<lock_t *> wait_locks;
+	std::vector<lock_t *> new_granted;
+
+	for (lock = first_lock;
+			 lock != NULL;
+			 lock = lock_rec_get_next(heap_no, lock)) {
+
+		if (lock_get_wait(lock)
+				&& lock_get_mode(lock) != LOCK_S
+				&& lock_get_mode(lock) != LOCK_X
+				&& !lock_rec_has_to_wait_in_queue(lock)) {
+
+			new_granted.push_back(lock);
+			lock_grant(lock);
+			HASH_DELETE(lock_t, hash, lock_hash,
+									rec_fold, lock);
+			lock_rec_insert_to_head(lock_hash, lock, lock_rec_fold(space, page_no));
+		} else if (lock_get_wait(lock)) {
+			wait_locks.push_back(lock);
+		}
+	}
+	for (i = 0; i < new_granted.size(); ++i) {
+		heap_no = lock_rec_find_set_bit(new_granted[i]);
+		trx = new_granted[i]->trx;
+		wait_dep_size_total = 0;
+		for (j = 0; j < wait_locks.size(); ++j) {
+			lock = wait_locks[j];
+			if (lock->trx != trx) {
+				wait_dep_size_total += lock->trx->dep_size + 1;
+			}
+		}
+		update_dep_size(trx, wait_dep_size_total);
+	}
+}
+
 /*************************************************************//**
 Removes a granted record lock of a transaction from the queue and grants
 locks to other transactions waiting in the queue if they now are entitled
@@ -4756,6 +4841,8 @@ lock_rec_unlock(
 {
 	lock_t*		first_lock;
 	lock_t*		lock;
+	ulint		space;
+	ulint		page_no;
 	ulint		heap_no;
 	const char*	stmt;
 	size_t		stmt_len;
@@ -4818,19 +4905,10 @@ released:
 	} else if (use_vats(trx)) {
 		vats_grant(lock_sys->rec_hash, lock, heap_no);
 	} else if (use_ldsf(trx)) {
+		space = lock->un_member.rec_lock.space;
+		page_no = lock->un_member.rec_lock.page_no;
 		ldsf_grant(lock_sys->rec_hash, lock, heap_no);
-		for (lock = first_lock; lock != NULL;
-				 lock = lock_rec_get_next(heap_no, lock)) {
-			if (lock_get_wait(lock)
-					&& lock_get_mode(lock) != LOCK_S
-					&& lock_get_mode(lock) != LOCK_X
-					&& !lock_rec_has_to_wait_in_queue(lock)) {
-
-				/* Grant the lock */
-				ut_ad(trx != lock->trx);
-				lock_grant(lock);
-			}
-		}
+		lock_rec_grant_non_rw_locks(lock_sys->rec_hash, first_lock, space, page_no, heap_no);
 	}
 
 	lock_mutex_exit();
