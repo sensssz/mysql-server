@@ -2934,12 +2934,14 @@ lock_rec_grant_non_rw_locks(
 	ulint     i;
 	ulint     j;
 	ulint			heap_no;
+	ulint			rec_fold;
 	long      wait_dep_size_total;
 	trx_t*			trx;
 	lock_t*		lock;
 	std::vector<lock_t *> wait_locks;
 	std::vector<lock_t *> new_granted;
 
+	rec_fold = lock_rec_fold(space, page_no);
 	for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
 																							page_no);
 			 lock != NULL;
@@ -2954,7 +2956,7 @@ lock_rec_grant_non_rw_locks(
 			lock_grant(lock);
 			HASH_DELETE(lock_t, hash, lock_hash,
 									rec_fold, lock);
-			lock_rec_insert_to_head(lock_hash, lock, lock_rec_fold(space, page_no));
+			lock_rec_insert_to_head(lock_hash, lock, rec_fold);
 		} else if (lock_get_wait(lock)) {
 			wait_locks.push_back(lock);
 		}
@@ -4788,12 +4790,14 @@ lock_rec_grant_non_rw_locks(
 {
 	ulint     i;
 	ulint     j;
+	ulint			rec_fold;
 	long      wait_dep_size_total;
 	trx_t*			trx;
 	lock_t*		lock;
 	std::vector<lock_t *> wait_locks;
 	std::vector<lock_t *> new_granted;
 
+	rec_fold = lock_rec_fold(space, page_no);
 	for (lock = first_lock;
 			 lock != NULL;
 			 lock = lock_rec_get_next(heap_no, lock)) {
@@ -4807,7 +4811,7 @@ lock_rec_grant_non_rw_locks(
 			lock_grant(lock);
 			HASH_DELETE(lock_t, hash, lock_hash,
 									rec_fold, lock);
-			lock_rec_insert_to_head(lock_hash, lock, lock_rec_fold(space, page_no));
+			lock_rec_insert_to_head(lock_hash, lock, rec_fold);
 		} else if (lock_get_wait(lock)) {
 			wait_locks.push_back(lock);
 		}
