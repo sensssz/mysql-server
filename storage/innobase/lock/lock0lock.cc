@@ -1531,46 +1531,49 @@ has_higher_priority(
 	if (trx_is_high_priority(lock2->trx)) {
 		return false;
 	}
+	if (lock1->trx->dep_size == lock2->trx->dep_size) {
+		return lock1->trx->seq < lock2->trx->seq;
+	}
 	return lock1->trx->dep_size > lock2->trx->dep_size;
 }
 
 static
 bool
 use_fcfs(
-    trx_t *trx)
+	trx_t *trx)
 {
-    return innodb_lock_schedule_algorithm ==
-		   INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
-		|| !thd_is_replication_slave_thread(trx->mysql_thd);
+	return innodb_lock_schedule_algorithm ==
+				 INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS
+			|| thd_is_replication_slave_thread(trx->mysql_thd);
 }
 
 static
 bool
 use_vats(
-    trx_t *trx)
+	trx_t *trx)
 {
-    return innodb_lock_schedule_algorithm ==
-		   INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
-		&& !thd_is_replication_slave_thread(trx->mysql_thd);
+	return innodb_lock_schedule_algorithm ==
+				 INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
+			&& !thd_is_replication_slave_thread(trx->mysql_thd);
 }
 
 static
 bool
 use_ldsf(
-    trx_t *trx)
+	trx_t *trx)
 {
-    return innodb_lock_schedule_algorithm ==
-		   INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF
-		&& !thd_is_replication_slave_thread(trx->mysql_thd);
+	return innodb_lock_schedule_algorithm ==
+				 INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF
+			&& !thd_is_replication_slave_thread(trx->mysql_thd);
 }
 
 static
 lock_t *
 lock_rec_get_first(
-    hash_table_t *hash,
-    ulint   space,
-    ulint   page_no,
-    ulint   heap_no)
+	hash_table_t *hash,
+	ulint   space,
+	ulint   page_no,
+	ulint   heap_no)
 {
 	lock_t *lock;
 
@@ -1586,8 +1589,8 @@ static
 void
 lock_rec_insert_to_head(
 	hash_table_t *lock_hash,
-    lock_t *lock,
-    ulint   rec_fold)
+	lock_t *lock,
+	ulint   rec_fold)
 {
 	lock_t *next;
 	hash_cell_t* cell;
@@ -1621,9 +1624,9 @@ reset_trx_size_updated()
 static
 void
 update_dep_size(
-    trx_t  *trx,
-    long    size_delta,
-    long    depth=1)
+	trx_t  *trx,
+	long    size_delta,
+	long    depth=1)
 {
 	ulint   space;
 	ulint   page_no;
@@ -1632,7 +1635,10 @@ update_dep_size(
 	lock_t *wait_lock;
 	hash_table_t *lock_hash;
 
-	if (!use_vats(trx) || trx->size_updated || size_delta == 0) {
+	if (!use_vats(trx)
+			|| !use_ldsf(trx)
+			|| trx->size_updated
+			|| size_delta == 0) {
 		return;
 	}
 
@@ -1670,9 +1676,9 @@ update_dep_size(
 static
 void
 update_dep_size(
-    lock_t *in_lock,
-    ulint   heap_no,
-    bool    wait)
+	lock_t *in_lock,
+	ulint   heap_no,
+	bool    wait)
 {
 	lock_t *lock;
 	ulint   space;
@@ -1680,7 +1686,8 @@ update_dep_size(
 	long    total_size_delta;
 	hash_table_t *lock_hash;
 
-	if (!use_vats(in_lock->trx)) {
+	if (!use_vats(in_lock->trx)
+			&& !use_ldsf(in_lock->trx)) {
 		return;
 	}
 
@@ -1729,7 +1736,7 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 		++lock->index->table->n_rec_locks;
 
-		if (use_vats(lock->trx) && !wait) {
+		if ((use_vats(lock->trx) || use_ldsf(lock->trx)) && !wait) {
 			lock_rec_insert_to_head(lock_hash, lock, key);
 		} else {
 			HASH_INSERT(lock_t, hash, lock_hash, key, lock);
@@ -2988,6 +2995,21 @@ lock_rec_dequeue_from_page(
 				vats_grant(lock_hash, in_lock, heap_no);
 			} else if(use_ldsf(in_lock->trx)) {
 				ldsf_grant(lock_hash, in_lock, heap_no);
+				for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
+																										page_no);
+						 lock != NULL;
+						 lock = lock_rec_get_next_on_page(lock)) {
+
+					if (lock_get_wait(lock)
+							&& lock_get_mode(lock) != LOCK_S
+							&& lock_get_mode(lock) != LOCK_X
+							&& !lock_rec_has_to_wait_in_queue(lock)) {
+
+						/* Grant the lock */
+						ut_ad(lock->trx != in_lock->trx);
+						lock_grant(lock);
+					}
+				}
 			}
 		}
 	}
@@ -4797,6 +4819,18 @@ released:
 		vats_grant(lock_sys->rec_hash, lock, heap_no);
 	} else if (use_ldsf(trx)) {
 		ldsf_grant(lock_sys->rec_hash, lock, heap_no);
+		for (lock = first_lock; lock != NULL;
+				 lock = lock_rec_get_next(heap_no, lock)) {
+			if (lock_get_wait(lock)
+					&& lock_get_mode(lock) != LOCK_S
+					&& lock_get_mode(lock) != LOCK_X
+					&& !lock_rec_has_to_wait_in_queue(lock)) {
+
+				/* Grant the lock */
+				ut_ad(trx != lock->trx);
+				lock_grant(lock);
+			}
+		}
 	}
 
 	lock_mutex_exit();
