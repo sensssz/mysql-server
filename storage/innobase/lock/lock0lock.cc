@@ -6111,7 +6111,7 @@ lock_rec_queue_validate(
 
 		} else if (lock_get_wait(lock) && !lock_rec_get_gap(lock)) {
 
-			ut_a(lock_rec_has_to_wait_in_queue(lock));
+			ut_a(lock_rec_has_to_wait_in_queue(lock) || use_ldsf(lock->trx));
 		}
 	}
 
@@ -7796,6 +7796,18 @@ DeadlockChecker::get_next_lock(const lock_t* lock, ulint heap_no) const
 	return(lock);
 }
 
+static
+const char *
+lock_get_wait_str(
+	const lock_t *lock)
+{
+	if (lock_get_wait(lock)) {
+		return "*";
+	} else {
+		return "";
+	}
+}
+
 /** Get the first lock to search. The search starts from the current
 wait_lock. What we are really interested in is an edge from the
 current wait_lock's owning transaction to another transaction that has
@@ -7814,6 +7826,9 @@ due to the way the record lock has is implemented.
 const lock_t*
 DeadlockChecker::get_first_lock(ulint* heap_no) const
 {
+	ulint space;
+	ulint page_no;
+
 	ut_ad(lock_mutex_own());
 
 	const lock_t*	lock = m_wait_lock;
@@ -7840,6 +7855,16 @@ DeadlockChecker::get_first_lock(ulint* heap_no) const
 		/* Position on the first lock on the physical record.*/
 		if (!lock_rec_get_nth_bit(lock, *heap_no)) {
 			lock = lock_rec_get_next_const(*heap_no, lock);
+		}
+
+		if (lock_get_wait(lock)) {
+			space = lock->un_member.rec_lock.space;
+			page_no = lock->un_member.rec_lock.page_no;
+			fprintf(stderr, "(%lu,%lu,%lu)->[", space, page_no);
+			for (; lock != NULL; lock = lock_rec_get_next_const(*heap_no, lock)) {
+				fprintf(stderr, "(%s%s),", lock_get_mode_str(lock), lock_get_wait_str(lock));
+			}
+			fprintf(stderr, "\n");
 		}
 
 		ut_a(!lock_get_wait(lock));
