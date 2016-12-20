@@ -2209,8 +2209,6 @@ lock_rec_lock_slow(
 
 	dberr_t	err;
 	trx_t*	trx = thr_get_trx(thr);
-	ulint space = block->page.id.space();
-	ulint page_no = block->page.id.page_no();
 
 	trx_mutex_enter(trx);
 
@@ -2232,8 +2230,6 @@ lock_rec_lock_slow(
 			request in the queue, as this transaction does not
 			have a lock strong enough already granted on the
 			record, we may have to wait. */
-
-			fprintf(stderr, "Conflicting lock: (%lu,%lu,%lu)\n", space, page_no, heap_no);
 
 			RecLock	rec_lock(thr, index, block, heap_no, mode);
 
