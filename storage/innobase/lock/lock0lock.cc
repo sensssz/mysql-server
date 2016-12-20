@@ -2852,7 +2852,7 @@ ldsf_grant(
 			wait_locks.push_back(lock);
 			if (lock_get_mode(lock) == LOCK_S) {
 				read_locks.push_back(lock);
-			} else if (lock_get_mode(lock) == LOCK_S) {
+			} else if (lock_get_mode(lock) == LOCK_X) {
 				write_locks.push_back(lock);
 			}
 		}
