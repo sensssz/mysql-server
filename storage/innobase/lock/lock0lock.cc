@@ -2842,8 +2842,8 @@ ldsf_grant(
 	page_no = released_lock->un_member.rec_lock.page_no;
 	rec_fold = lock_rec_fold(space, page_no);
 	for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
-		 lock != NULL;
-		 lock = lock_rec_get_next(heap_no, lock)) {
+			 lock != NULL;
+			 lock = lock_rec_get_next(heap_no, lock)) {
 		if (!lock_get_wait(lock)) {
 			has_granted_lock = true;
 			break;
@@ -2863,7 +2863,7 @@ ldsf_grant(
 	}
 
 	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
-	actual_chunk_size = std::min(wait_locks.size(), innodb_ldsf_chunk_size);
+	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
 	read_dep_size_total = 0;
 	for (i = 1; i < actual_chunk_size; ++i) {
 		lock = read_locks[i];

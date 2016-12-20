@@ -19555,14 +19555,14 @@ static MYSQL_SYSVAR_ENUM(lock_schedule_algorithm, innodb_lock_schedule_algorithm
   " use the Variance-Aware-Transaction-Scheduling algorithm, which"
   " uses an Eldest-Transaction-First heuristic;"
   " LDSF"
-  " grant the locks in Largest-Dependency-Set-First order;",
+  " grant the locks in Largest-Dependency-Set-First order.",
   NULL, NULL, INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS,
   &innodb_lock_schedule_algorithm_typelib);
 
 static MYSQL_SYSVAR_ULONG(ldsf_chunk_size, innodb_ldsf_chunk_size,
   PLUGIN_VAR_OPCMDARG,
   "Chunk size for the LDSF scheduling algorithm.",
-  NULL, NULL, 5, 0, ULONG_MAX, 0);
+  NULL, NULL, 5, 1, ULONG_MAX, 0);
 
 static MYSQL_SYSVAR_ULONG(buffer_pool_instances, srv_buf_pool_instances,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -20169,6 +20169,7 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(large_prefix),
 	MYSQL_SYSVAR(force_load_corrupted),
 	MYSQL_SYSVAR(lock_schedule_algorithm),
+	MYSQL_SYSVAR(ldsf_chunk_size),
   MYSQL_SYSVAR(locks_unsafe_for_binlog),
   MYSQL_SYSVAR(lock_wait_timeout),
   MYSQL_SYSVAR(deadlock_detect),
