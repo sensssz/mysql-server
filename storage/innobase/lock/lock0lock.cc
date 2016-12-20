@@ -2209,6 +2209,8 @@ lock_rec_lock_slow(
 
 	dberr_t	err;
 	trx_t*	trx = thr_get_trx(thr);
+	ulint space = block->page.id.space();
+	ulint page_no = block->page.id.page_no();
 
 	trx_mutex_enter(trx);
 
@@ -2230,6 +2232,8 @@ lock_rec_lock_slow(
 			request in the queue, as this transaction does not
 			have a lock strong enough already granted on the
 			record, we may have to wait. */
+
+			fprintf(stderr, "Conflicting lock: (%lu,%lu,%lu)\n", space, page_no, heap_no);
 
 			RecLock	rec_lock(thr, index, block, heap_no, mode);
 
@@ -2885,7 +2889,7 @@ ldsf_grant(
 	}
 
 	if (select_result == 1) {
-		for (i = 1; i < actual_chunk_size; ++i) {
+		for (i = 0; i < actual_chunk_size; ++i) {
 			lock = read_locks[i];
 			lock_grant(lock);
 			HASH_DELETE(lock_t, hash, lock_hash,
@@ -7864,7 +7868,7 @@ DeadlockChecker::get_first_lock(ulint* heap_no) const
 			for (; lock != NULL; lock = lock_rec_get_next_const(*heap_no, lock)) {
 				fprintf(stderr, "(%s%s),", lock_get_mode_str(lock), lock_get_wait_str(lock));
 			}
-			fprintf(stderr, "\n");
+			fprintf(stderr, "]\n");
 		}
 
 		ut_a(!lock_get_wait(lock));
