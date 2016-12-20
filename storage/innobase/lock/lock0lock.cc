@@ -1635,8 +1635,8 @@ update_dep_size(
 	lock_t *wait_lock;
 	hash_table_t *lock_hash;
 
-	if (!use_vats(trx)
-			|| !use_ldsf(trx)
+	if ((!use_vats(trx)
+			&& !use_ldsf(trx))
 			|| trx->size_updated
 			|| size_delta == 0) {
 		return;
@@ -7855,16 +7855,6 @@ DeadlockChecker::get_first_lock(ulint* heap_no) const
 		/* Position on the first lock on the physical record.*/
 		if (!lock_rec_get_nth_bit(lock, *heap_no)) {
 			lock = lock_rec_get_next_const(*heap_no, lock);
-		}
-
-		if (lock_get_wait(lock)) {
-			space = lock->un_member.rec_lock.space;
-			page_no = lock->un_member.rec_lock.page_no;
-			fprintf(stderr, "(%lu,%lu,%lu)->[", space, page_no, *heap_no);
-			for (; lock != NULL; lock = lock_rec_get_next_const(*heap_no, lock)) {
-				fprintf(stderr, "(%s%s),", lock_get_mode_str(lock), lock_get_wait_str(lock));
-			}
-			fprintf(stderr, "]\n");
 		}
 
 		ut_a(!lock_get_wait(lock));
