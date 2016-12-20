@@ -7860,7 +7860,7 @@ DeadlockChecker::get_first_lock(ulint* heap_no) const
 		if (lock_get_wait(lock)) {
 			space = lock->un_member.rec_lock.space;
 			page_no = lock->un_member.rec_lock.page_no;
-			fprintf(stderr, "(%lu,%lu,%lu)->[", space, page_no);
+			fprintf(stderr, "(%lu,%lu,%lu)->[", space, page_no, *heap_no);
 			for (; lock != NULL; lock = lock_rec_get_next_const(*heap_no, lock)) {
 				fprintf(stderr, "(%s%s),", lock_get_mode_str(lock), lock_get_wait_str(lock));
 			}
