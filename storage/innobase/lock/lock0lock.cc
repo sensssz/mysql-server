@@ -4772,8 +4772,6 @@ lock_rec_unlock(
 {
 	lock_t*		first_lock;
 	lock_t*		lock;
-	ulint		space;
-	ulint		page_no;
 	ulint		heap_no;
 	const char*	stmt;
 	size_t		stmt_len;
@@ -4836,8 +4834,6 @@ released:
 	} else if (use_vats(trx)) {
 		vats_grant(lock_sys->rec_hash, lock, heap_no);
 	} else if (use_ldsf(trx)) {
-		space = lock->un_member.rec_lock.space;
-		page_no = lock->un_member.rec_lock.page_no;
 		ldsf_grant(lock_sys->rec_hash, lock, heap_no);
 	}
 
