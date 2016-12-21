@@ -2830,12 +2830,12 @@ ldsf_grant(
 	lock_t*		wait_lock;
 	lock_t*		write_lock;
 	lock_t*		new_granted_lock;
-	std::vector<lock_t *> write_locks;
-	std::vector<lock_t *> read_locks;
-	std::vector<lock_t *> non_rw_locks;
-	std::vector<lock_t *> wait_locks;
-	std::vector<lock_t *> granted_locks;
-	std::vector<lock_t *> new_granted;
+	std::vector<lock_t *> write_locks;		/* All write wait locks */
+	std::vector<lock_t *> read_locks;			/* All read wait locks */
+	std::vector<lock_t *> non_rw_locks;		/* All non-rw wait locks */
+	std::vector<lock_t *> wait_locks;			/* All wait locks */
+	std::vector<lock_t *> granted_locks;	/* All granted lock */
+	std::vector<lock_t *> new_granted;		/* All locks granted in this schedule */
 
 	i = 0;
 	sub_dep_size_total = 0;
@@ -2843,6 +2843,7 @@ ldsf_grant(
 	space = released_lock->un_member.rec_lock.space;
 	page_no = released_lock->un_member.rec_lock.page_no;
 	rec_fold = lock_rec_fold(space, page_no);
+	// Find all wait locks, read wait locks, write wait locks and non-rw wait locks
 	for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
 			 lock != NULL;
 			 lock = lock_rec_get_next(heap_no, lock)) {
@@ -2861,6 +2862,8 @@ ldsf_grant(
 		}
 	}
 
+	// Sort read locks and calcualte the actual chunk size.
+	// Calculate their estimated cost.
 	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
 	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
 	read_dep_size_total = 0;
@@ -2871,6 +2874,7 @@ ldsf_grant(
 	write_lock = lock_rec_find_max_dep_size(write_locks);
 	write_dep_size = write_lock ? write_lock->trx->dep_size : 0;
 
+	// 1 means selecting read chunk and -1 means selecting write lock
 	select_result = 0;
 	if (actual_chunk_size > 0
 			&& write_lock != NULL) {
@@ -2904,6 +2908,7 @@ ldsf_grant(
 		}
 	}
 
+	// Grant non-rw locks using FIFO
 	for (i = 0; i < non_rw_locks.size(); ++i) {
 		lock = non_rw_locks[i];
 		if (!lock_rec_has_to_wait_in_queue(lock)) {
@@ -2915,6 +2920,12 @@ ldsf_grant(
 		}
 	}
 
+	// Calculate the total dep size of new granted locks (sub_dep_size_total)
+	// and that of the wait locks (add_dep_size_total).
+	// sub_dep_size_total is used to adjust the dep size of all transactions
+	// already holding granted locks prior to this schedule.
+	// add_dep_size_total is used to adjust the dep size of all transactions
+	// being granted locks during this schedule.
 	for (i = 0; i < wait_locks.size(); ++i) {
 		lock = wait_locks[i];
 		if (!lock_get_wait(lock)) {
@@ -2924,10 +2935,14 @@ ldsf_grant(
 		}
 	}
 
+	// Handle the case where the current lock being released is a wait lock
+	// (during rollback of a deadlocked transaction)
 	if (lock_get_wait(released_lock)) {
 		sub_dep_size_total -= released_lock->trx->dep_size + 1;
 	}
 
+	// Adjust the dep size of all transactions already holding granted locks
+	// prior to this schedule.
 	for (i = 0; i < granted_locks.size(); ++i) {
 		lock = granted_locks[i];
 		dep_size_compsensate = 0;
@@ -2941,6 +2956,8 @@ ldsf_grant(
 			update_dep_size(lock->trx, sub_dep_size_total + dep_size_compsensate);
 		}
 	}
+	// Adjust the dep size of all transactions being granted locks during
+	// this schedule.
 	for (i = 0; i < new_granted.size(); ++i) {
 		lock = new_granted[i];
 		dep_size_compsensate = 0;
