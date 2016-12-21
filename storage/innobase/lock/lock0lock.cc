@@ -2829,6 +2829,7 @@ ldsf_grant(
 	lock_t*		lock;
 	lock_t*		wait_lock;
 	lock_t*		write_lock;
+	lock_t*		new_granted_lock;
 	std::vector<lock_t *> write_locks;
 	std::vector<lock_t *> read_locks;
 	std::vector<lock_t *> non_rw_locks;
@@ -7719,18 +7720,6 @@ DeadlockChecker::get_next_lock(const lock_t* lock, ulint heap_no) const
 	      || lock_get_type_low(lock) == lock_get_type_low(m_wait_lock));
 
 	return(lock);
-}
-
-static
-const char *
-lock_get_wait_str(
-	const lock_t *lock)
-{
-	if (lock_get_wait(lock)) {
-		return "*";
-	} else {
-		return "";
-	}
 }
 
 /** Get the first lock to search. The search starts from the current
