@@ -2861,39 +2861,43 @@ ldsf_grant(
 		}
 	}
 
-	if (granted_locks.size() == 0) {
-		std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
-		actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
-		read_dep_size_total = 0;
-		for (i = 1; i < actual_chunk_size; ++i) {
+	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
+	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
+	read_dep_size_total = 0;
+	for (i = 1; i < actual_chunk_size; ++i) {
+		lock = read_locks[i];
+		read_dep_size_total += lock->trx->dep_size;
+	}
+	write_lock = lock_rec_find_max_dep_size(write_locks);
+	write_dep_size = write_lock ? write_lock->trx->dep_size : 0;
+
+	select_result = 0;
+	if (actual_chunk_size > 0
+			&& write_lock != NULL) {
+		read_lock_cost = read_dep_size_total + actual_chunk_size;
+		write_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
+		select_result = (read_lock_cost < write_lock_cost) ? 1 : -1;
+	} else if (write_lock != NULL) {
+		select_result = -1;
+	} else if (actual_chunk_size > 0) {
+		select_result = 1;
+	}
+
+	if (select_result == 1) {
+		for (i = 0; i < actual_chunk_size; ++i) {
 			lock = read_locks[i];
-			read_dep_size_total += lock->trx->dep_size;
-		}
-		write_lock = lock_rec_find_max_dep_size(write_locks);
-		write_dep_size = write_lock ? write_lock->trx->dep_size : 0;
-
-		select_result = 0;
-		if (actual_chunk_size > 0
-				&& write_lock != NULL) {
-			read_lock_cost = read_dep_size_total + actual_chunk_size;
-			write_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
-			select_result = (read_lock_cost < write_lock_cost) ? 1 : -1;
-		} else if (write_lock != NULL) {
-			select_result = -1;
-		} else if (actual_chunk_size > 0) {
-			select_result = 1;
-		}
-
-		if (select_result == 1) {
-			for (i = 0; i < actual_chunk_size; ++i) {
-				lock = read_locks[i];
+			if (!lock_rec_has_to_wait_granted(lock, granted_locks)
+					&& !lock_rec_has_to_wait_granted(lock, new_granted)) {
 				lock_grant(lock);
 				HASH_DELETE(lock_t, hash, lock_hash,
 										rec_fold, lock);
 				lock_rec_insert_to_head(lock_hash, lock, rec_fold);
 				new_granted.push_back(lock);
 			}
-		} else if (select_result == -1) {
+		}
+	} else if (select_result == -1) {
+		if (!lock_rec_has_to_wait_granted(lock, granted_locks)
+				&& !lock_rec_has_to_wait_granted(lock, new_granted)) {
 			lock_grant(write_lock);
 			HASH_DELETE(lock_t, hash, lock_hash,
 									rec_fold, write_lock);
