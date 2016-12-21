@@ -2896,8 +2896,8 @@ ldsf_grant(
 			}
 		}
 	} else if (select_result == -1) {
-		if (!lock_rec_has_to_wait_granted(lock, granted_locks)
-				&& !lock_rec_has_to_wait_granted(lock, new_granted)) {
+		if (!lock_rec_has_to_wait_granted(write_lock, granted_locks)
+				&& !lock_rec_has_to_wait_granted(write_lock, new_granted)) {
 			lock_grant(write_lock);
 			HASH_DELETE(lock_t, hash, lock_hash,
 									rec_fold, write_lock);
