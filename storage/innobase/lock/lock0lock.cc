@@ -2886,8 +2886,7 @@ ldsf_grant(
 	if (select_result == 1) {
 		for (i = 0; i < actual_chunk_size; ++i) {
 			lock = read_locks[i];
-			if (!lock_rec_has_to_wait_granted(lock, granted_locks)
-					&& !lock_rec_has_to_wait_granted(lock, new_granted)) {
+			if (!lock_rec_has_to_wait_granted(lock, granted_locks)) {
 				lock_grant(lock);
 				HASH_DELETE(lock_t, hash, lock_hash,
 										rec_fold, lock);
@@ -2896,8 +2895,7 @@ ldsf_grant(
 			}
 		}
 	} else if (select_result == -1) {
-		if (!lock_rec_has_to_wait_granted(write_lock, granted_locks)
-				&& !lock_rec_has_to_wait_granted(write_lock, new_granted)) {
+		if (!lock_rec_has_to_wait_granted(write_lock, granted_locks)) {
 			lock_grant(write_lock);
 			HASH_DELETE(lock_t, hash, lock_hash,
 									rec_fold, write_lock);
@@ -2909,11 +2907,11 @@ ldsf_grant(
 	for (i = 0; i < non_rw_locks.size(); ++i) {
 		lock = non_rw_locks[i];
 		if (!lock_rec_has_to_wait_in_queue(lock)) {
-			lock_grant(write_lock);
+			lock_grant(lock);
 			HASH_DELETE(lock_t, hash, lock_hash,
-									rec_fold, write_lock);
-			lock_rec_insert_to_head(lock_hash, write_lock, rec_fold);
-			new_granted.push_back(write_lock);
+									rec_fold, lock);
+			lock_rec_insert_to_head(lock_hash, lock, rec_fold);
+			new_granted.push_back(lock);
 		}
 	}
 
