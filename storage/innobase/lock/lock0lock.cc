@@ -1532,9 +1532,9 @@ has_higher_priority(
 		return false;
 	}
 	if (lock1->trx->dep_size == lock2->trx->dep_size) {
-		return lock1->trx->seq < lock2->trx->seq;
+		return lock1->trx->start_time_micro < lock2->trx->start_time_micro;
 	}
-	return lock1->trx->start_time_micro < lock2->trx->start_time_micro;
+	return lock1->trx->dep_size > lock2->trx->dep_size;
 }
 
 static
