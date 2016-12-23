@@ -1089,6 +1089,7 @@ struct trx_t {
 
 	time_t		start_time;	/*!< time the state last time became
 					TRX_STATE_ACTIVE */
+	clock_t		start_time_micro;
 	long			dep_size;
 	bool			size_updated;
 	long			seq;
