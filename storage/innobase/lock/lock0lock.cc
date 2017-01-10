@@ -59,10 +59,10 @@ my_bool	innobase_deadlock_detect = TRUE;
 /** Lock scheduling algorithm */
 ulong innodb_lock_schedule_algorithm = INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS;
 
-ulong innodb_ldsf_chunk_size = 5;
+ulong innodb_ldsf_chunk_size = 1000;
 
 /** Total number of cached record locks */
-static const ulint	REC_LOCK_CACHE = 8;
+static const ulint	REC_LOCK_CACHE = 5;
 
 /** Maximum record lock size in bytes */
 static const ulint	REC_LOCK_SIZE = sizeof(ib_lock_t) + 256;
@@ -2802,7 +2802,7 @@ double
 ldsf_finish_time(
 	int chunk_size)
 {
-	return 2 * log2(chunk_size + 1);
+	return 1 * log2(chunk_size + 1);
 }
 
 static
@@ -2857,6 +2857,7 @@ ldsf_grant(
 			} else if (lock_get_mode(lock) == LOCK_X) {
 				write_locks.push_back(lock);
 			} else {
+                fprintf(stderr, "\n Non-rw-locks \n");
 				non_rw_locks.push_back(lock);
 			}
 		}
@@ -2878,8 +2879,8 @@ ldsf_grant(
 	select_result = 0;
 	if (actual_chunk_size > 0
 			&& write_lock != NULL) {
-		read_lock_cost = read_dep_size_total + actual_chunk_size;
-		write_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
+		write_lock_cost = read_dep_size_total + actual_chunk_size;
+		read_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
 		select_result = (read_lock_cost < write_lock_cost) ? 1 : -1;
 	} else if (write_lock != NULL) {
 		select_result = -1;
