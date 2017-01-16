@@ -131,6 +131,8 @@ struct lock_t {
 					wait flag, ORed */
     
     long        release_time;
+    bool wait;
+    bool granted = false;
 
 	/** Determine if the lock object is a record lock.
 	@return true if record lock, false otherwise. */

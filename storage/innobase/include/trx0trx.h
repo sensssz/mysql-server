@@ -1261,6 +1261,8 @@ struct trx_t {
     
     long        sub_tree_size;
     long        finish_time;
+    bool        updated = false;
+    bool        printed = false;
 
 #ifdef UNIV_DEBUG
 	bool		is_dd_trx;	/*!< True if the transaction is used for
