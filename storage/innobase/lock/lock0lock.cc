@@ -57,6 +57,9 @@ Created 5/7/1996 Heikki Tuuri
 #include <unordered_map>
 #include <vector>
 
+void print_tree(trx_t*, int);
+void print_tree(lock_t*, int);
+
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
 
@@ -176,7 +179,8 @@ static
 void
 update_rec_release_time(
     lock_t* lock,
-    ulint   depth = 1);
+    ulint   depth = 1,
+    bool recursive = true);
 
 #define lock_sys_change_mutex_enter() pthread_mutex_lock(&lock_sys_change->mutex)
 #define lock_sys_change_mutex_exit() pthread_mutex_unlock(&lock_sys_change->mutex)
@@ -232,7 +236,6 @@ void*
 handle_lock_sys_change_events(
     void* args)
 {
-    return NULL;
     while (!thread_shutdown) {
         lock_sys_change_mutex_enter();
         while (!thread_shutdown &&
@@ -264,12 +267,13 @@ submit_lock_sys_change(
     if (!thread_started) {
         return;
     }
+
     lock_sys_change_event_t event;
     event.lock_hash = lock_hash;
     event.space = space;
     event.page_no = page_no;
     event.heap_no = heap_no;
-//    process_lock_sys_change_event(event, true);
+    // process_lock_sys_change_event(event, true);
     lock_sys_change_mutex_enter();
     lock_sys_change->event_queue.push_back(std::move(event));
     pthread_cond_signal(&lock_sys_change->cond);
@@ -297,6 +301,7 @@ process_lock_sys_change_event(
     lock_sys_change_event_t event,
     bool lock_acquired)
 {
+    // fprintf(stderr, "process\n");
     int         index;
     int         num_swaps;
     lock_t*     lock;
@@ -349,6 +354,7 @@ process_lock_sys_change_event(
         trx_sys_mutex_exit();
         lock_mutex_exit();
     }
+    // fprintf(stderr, "end process\n");
 }
 
 
@@ -396,10 +402,18 @@ swap_locks_if_beneficial(
     ulint       rec_fold;
     hash_cell_t*    cell;
 
+    // fprintf(stderr, "check swap %p, %p\n", lock1->trx, lock2->trx);
+
     ut_ad(lock_mutex_own());
 
     original_finish_time = total_finish_time();
-    
+
+    // fprintf(stderr,"-------\n");
+    // print_tree(lock1->trx,1);
+    // fprintf(stderr,"\n");
+    // print_tree(lock2->trx,1);
+    // fprintf(stderr,"-------\n");
+
     rec_fold = lock_rec_fold(event.space, event.page_no);
     cell = hash_get_nth_cell(event.lock_hash, hash_calc_hash(rec_fold, event.lock_hash));
 
@@ -435,12 +449,21 @@ swap_locks_if_beneficial(
     
     new_finish_time = total_finish_time();
 
+    // fprintf(stderr,"-------\n");
+    // print_tree(lock1->trx,1);
+    // fprintf(stderr,"\n");
+    // print_tree(lock2->trx,1);
+    // fprintf(stderr,"-------\n");
+
     TraceTool::get_instance()->original_finish_time.push_back(original_finish_time);
     TraceTool::get_instance()->new_finish_time.push_back(new_finish_time);
+    fprintf(stderr, "%ld, %ld\n", original_finish_time, new_finish_time);
 
     if (new_finish_time < original_finish_time) {
+        fprintf(stderr, "do swap\n");
         return true;
     }
+    fprintf(stderr, "don't swap\n");
     
     if (lock2->hash == lock1) {
         *lock1_prev = lock1;
@@ -1911,11 +1934,16 @@ update_trx_finish_time(
     long    delta,
     ulint   depth)
 {
+    if (trx->updated)
+        return;
+    trx->updated = true;
     lock_t*     lock;
+
+    fprintf(stderr, "trx %d\n", depth);
     
     trx->finish_time += delta;
     
-    if (depth > 1000) {
+    if (depth > 2000) {
         fprintf(stderr, "=========================================================\n");
         fprintf(stderr, "%lu+(%ld)->[", trx->id, delta);
         for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
@@ -1938,6 +1966,7 @@ update_trx_finish_time(
             update_rec_release_time(lock, depth + 1);
         }
     }
+    trx->updated = false;
 }
 
 void
@@ -1988,7 +2017,8 @@ find_max_trx_finish_time(
 void
 update_rec_release_time(
     lock_t* in_lock,
-    ulint   depth)
+    ulint   depth,
+    bool recursive)
 {
     lock_t*     lock;
     ulint       space;
@@ -1999,6 +2029,8 @@ update_rec_release_time(
     long        new_release_time;
     triplet     rec;
     hash_table_t*   lock_hash;
+
+    fprintf(stderr, "rec %d\n", depth);
     
     space = in_lock->un_member.rec_lock.space;
     page_no = in_lock->un_member.rec_lock.page_no;
@@ -2045,8 +2077,9 @@ update_rec_release_time(
         release_time = rec_release_time[rec];
         new_release_time = find_max_trx_finish_time(lock_hash, rec, in_lock->trx);
         rec_release_time[rec] = new_release_time;
-        if (release_time != new_release_time
-            && new_release_time != 0) {
+        if (release_time != new_release_time && recursive
+            // && new_release_time != 0) {
+            ) {
             for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
                  lock != NULL;
                  lock = lock_rec_get_next(rec.heap_no, lock)) {
@@ -2109,6 +2142,8 @@ insert_and_find_last_wait_lock(
     lock_t*         lock;
     bool            is_read_lock;
     hash_cell_t*    cell;
+    lock_t* read = NULL;
+    lock_t* last_write = NULL;
     
     in_lock->hash = NULL;
     last_wait_lock = NULL;
@@ -2132,14 +2167,35 @@ insert_and_find_last_wait_lock(
             && lock->un_member.rec_lock.space == space
             && lock->un_member.rec_lock.page_no == page_no
             && lock_rec_get_nth_bit(lock, heap_no)) {
-            if (!(is_read_lock
-                  && last_wait_lock != NULL
-                  && lock_get_mode(lock) != LOCK_S)) {
-                last_wait_lock = lock;
-            }
+            // if (!(is_read_lock
+            //       && last_wait_lock != NULL
+            //       && lock_get_mode(lock) != LOCK_S)) {
+            //     last_wait_lock = lock;
+                if (lock_get_mode(lock) == LOCK_S)
+                    read = lock;
+                else 
+                    last_write = lock;
+            // }
         }
     }
     lock->hash = in_lock;
+
+    if (is_read_lock)
+    {
+        if (read == NULL)
+            last_wait_lock = last_write;
+        else 
+            last_wait_lock = read;
+    }
+    else
+    {
+        if (read == NULL)
+            last_wait_lock = last_write;
+        else if (last_write == NULL)
+            last_wait_lock = read;
+        else
+            last_wait_lock = (read->trx->finish_time > last_write->trx->finish_time) ? read : last_write;
+    }
     return last_wait_lock;
 }
 
@@ -2378,7 +2434,6 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 {
     TraceTool::path_count = 42;
     TRACE_START();
-    lock_t* last_wait_lock = NULL;
     ulint   space;
     ulint   page_no;
     ulint   heap_no;
@@ -2848,10 +2903,20 @@ lock_grant(
     ut_ad(trx_mutex_own(lock->trx) == owns_trx_mutex);
     
     lock_reset_lock_and_trx_wait(lock);
+    lock->granted = true;
 
     if (!owns_trx_mutex) {
         trx_mutex_enter(lock->trx);
     }
+
+    lock->trx->finish_time = 0;
+    update_trx_finish_time(lock->trx, 0);
+    lock->trx->finish_time = 1;
+    update_rec_release_time(lock, 1, false);
+
+    // fprintf(stderr, "\ngrant_lock\n");
+    // print_tree(lock->trx, 1);
+    // fprintf(stderr, "\n");
 
 	if (lock_get_mode(lock) == LOCK_AUTO_INC) {
 		dict_table_t*	table = lock->un_member.tab_lock.table;
@@ -3222,6 +3287,14 @@ lock_rec_dequeue_from_page(
         }
         has_granted_locks = false;
         is_read = false;
+
+        // lock_sys_change_event_t event;
+        // event.lock_hash = lock_hash;
+        // event.space = space;
+        // event.page_no = page_no;
+        // event.heap_no = heap_no;
+        // process_lock_sys_change_event(event, true);
+ 
         for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
              lock != NULL;
              lock = lock_rec_get_next(heap_no, lock)) {
@@ -3246,7 +3319,7 @@ lock_rec_dequeue_from_page(
             for (auto lock : locks_to_grant) {
                 lock_grant(lock, false);
             }
-            rec_release_time[rec] = 1;
+            // rec_release_time[rec] = 1;
             submit_lock_sys_change(lock_hash, space, page_no, heap_no);
         } else {
             rec_release_time[rec] = 0;
@@ -5094,7 +5167,7 @@ released:
             for (auto lock : locks_to_grant) {
                 lock_grant(lock, false);
             }
-            rec_release_time[triplet_rec] = 1;
+            // rec_release_time[triplet_rec] = 1;
             submit_lock_sys_change(lock_sys->rec_hash, space, page_no, heap_no);
         } else {
             rec_release_time[triplet_rec] = 0;
@@ -8395,3 +8468,68 @@ lock_trx_alloc_locks(trx_t* trx)
 	}
 
 }
+
+
+
+void print_tree(trx_t* trx, int depth)
+{
+    if (trx->printed)
+        return;
+    trx->printed = true;
+    lock_t* lock;
+    for (int i = 0; i < depth; ++i)
+        fprintf(stderr, "\t");
+    fprintf(stderr, "%p (%ld)\n", trx, trx->finish_time);
+    for (lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
+            lock != NULL;
+            lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+        fprintf(stderr, "{%p} (%d,%d) %d %d\n", lock, lock_get_wait(lock), lock_get_wait(lock), lock->granted, lock_get_type_low(lock) == LOCK_REC);
+        if (lock_get_type_low(lock) == LOCK_REC
+                && !lock_get_wait(lock)){
+            print_tree(lock, depth + 1);
+        }
+    }
+    trx->printed = false;
+}
+
+void print_tree(lock_t* in_lock, int depth)
+{
+    lock_t*     lock;
+    ulint       space;
+    ulint       page_no;
+    ulint       heap_no;
+    ulint       nbits;
+    long        release_time;
+    long        new_release_time;
+    triplet     rec;
+    hash_table_t*   lock_hash;
+    
+    space = in_lock->un_member.rec_lock.space;
+    page_no = in_lock->un_member.rec_lock.page_no;
+    rec.space = space;
+    rec.page_no = page_no;
+    lock_hash = lock_hash_get(in_lock->type_mode);
+    nbits = lock_rec_get_n_bits(in_lock);
+    
+    fprintf(stderr, "[%p]\n", in_lock);
+    for (heap_no = 0; heap_no < nbits; heap_no++) {
+        if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
+            continue;
+        }
+        rec.heap_no = heap_no;
+        for (int i = 0; i < depth; ++i)
+            fprintf(stderr, "\t");
+        fprintf(stderr, "[%ld, %ld, %ld] (%d)\n", rec.space, rec.page_no, rec.heap_no, rec_release_time[rec]);
+        for (lock = lock_rec_get_first(lock_hash, rec.space, rec.page_no, rec.heap_no);
+             lock != NULL;
+             lock = lock_rec_get_next(rec.heap_no, lock)) {
+            if (in_lock->trx != lock->trx
+                && lock_get_wait(lock)) {
+                print_tree(lock->trx, depth+1);
+            }
+        }
+    }
+}
+
+
+
