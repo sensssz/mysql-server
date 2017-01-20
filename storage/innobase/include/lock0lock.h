@@ -68,14 +68,7 @@ std::vector<ulint> exec_time;
 struct timespec last_update = {0, 0};
 
 void
-dump_log()
-{
-	std::ofstream log_file("latency/schedule_overhead");
-	for (size_t i = 0; i < exec_time.size(); ++i) {
-		log_file << exec_time[i] << std::endl;
-	}
-	log_file.close();
-}
+dump_log();
 
 /*********************************************************************//**
 Gets the size of a lock struct.

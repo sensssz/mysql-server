@@ -3064,6 +3064,16 @@ lock_rec_dequeue_from_page(
 	exec_time.push_back(duration);
 }
 
+void
+dump_log()
+{
+	std::ofstream log_file("latency/schedule_overhead");
+	for (size_t i = 0; i < exec_time.size(); ++i) {
+		log_file << exec_time[i] << std::endl;
+	}
+	log_file.close();
+}
+
 /*************************************************************//**
 Removes a record lock request, waiting or granted, from the queue. */
 void
