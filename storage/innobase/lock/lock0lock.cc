@@ -3037,6 +3037,26 @@ lock_rec_dequeue_from_page(
 
 	if (use_fcfs(in_lock->trx)) {
 
+        int num_read = 0;
+        int num_write = 0;
+
+        for (heap_no = 0; heap_no < lock_rec_get_n_bits(in_lock); ++heap_no)
+        {
+            for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
+                    lock != NULL;
+                    lock = lock_rec_get_next(heap_no, lock)) {
+                if (!lock_get_wait(lock))
+                    continue;
+                if (lock_get_mode(lock) == LOCK_S)
+                    ++num_read;
+                if (lock_get_mode(lock) == LOCK_X)
+                    ++num_write;
+            }
+        }
+
+        read_len.push_back(num_read);
+        write_len.push_back(num_write);
+
 		/* Check if waiting locks in the queue can now be granted:
 		 grant locks if there are no conflicting locks ahead. Stop at
 		 the first X lock that is waiting or has been granted. */
@@ -3054,6 +3074,7 @@ lock_rec_dequeue_from_page(
 				lock_grant(lock);
 			}
 		}
+
 	} else {
 		for (heap_no = 0; heap_no < lock_rec_get_n_bits(in_lock); ++heap_no) {
 			if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
