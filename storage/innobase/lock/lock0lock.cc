@@ -59,7 +59,7 @@ my_bool	innobase_deadlock_detect = TRUE;
 /** Lock scheduling algorithm */
 ulong innodb_lock_schedule_algorithm = INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS;
 
-ulong innodb_ldsf_chunk_size = 1000;
+ulong innodb_ldsf_chunk_size = 10;
 
 /** Total number of cached record locks */
 static const ulint	REC_LOCK_CACHE = 5;
@@ -76,6 +76,8 @@ static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 typedef struct timespec timespec;
 
 std::vector<ulint> exec_time;
+std::vector<int> read_len;
+std::vector<int> write_len;
 timespec last_update = {0, 0};
 
 /** Deadlock checker. */
@@ -2871,6 +2873,7 @@ ldsf_grant(
 	// Sort read locks and calcualte the actual chunk size.
 	// Calculate their estimated cost.
 	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
+    read_len.push_back(read_locks.size());
 	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
 	read_dep_size_total = 0;
 	for (i = 1; i < actual_chunk_size; ++i) {
@@ -2878,6 +2881,7 @@ ldsf_grant(
 		read_dep_size_total += lock->trx->dep_size;
 	}
 	write_lock = lock_rec_find_max_dep_size(write_locks);
+    write_len.push_back(write_locks.size());
 	write_dep_size = write_lock ? write_lock->trx->dep_size : 0;
 
 	// 1 means selecting read chunk and -1 means selecting write lock
@@ -3077,6 +3081,27 @@ dump_log()
 		log_file << exec_time[i] << std::endl;
 	}
 	log_file.close();
+
+    std::ofstream read_len_file("latency/read_len");
+    for (size_t i = 0; i < read_len.size(); ++i)
+    {
+        read_len_file << read_len[i] << std::endl;
+    }
+    read_len_file.close();
+
+    std::ofstream write_len_file("latncy/write_len");
+    for (size_t i = 0; i < write_len.size(); ++i)
+    {
+        write_len_file << write_len[i] << std::endl;
+    }
+    write_len_file.close();
+
+    std::ofstream total_len_file("latency/total_len");
+    for (size_t i = 0; i < read_len.size(); ++i)
+    {
+        total_len_file << write_len[i] + read_len[i] << std::endl;
+    }
+    total_len_file.close();
 }
 
 /*************************************************************//**
