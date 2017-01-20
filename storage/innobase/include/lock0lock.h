@@ -71,8 +71,8 @@ void
 dump_log()
 {
 	std::ofstream log_file("latency/schedule_overhead");
-	for (int i = 0; i < exec_time.size(); ++i) {
-		log_file << exec_time[i] << std::end;
+	for (size_t i = 0; i < exec_time.size(); ++i) {
+		log_file << exec_time[i] << std::endl;
 	}
 	log_file.close();
 }
