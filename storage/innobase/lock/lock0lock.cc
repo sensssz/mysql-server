@@ -3062,9 +3062,10 @@ lock_rec_dequeue_from_page(
 		}
 	}
 
-	clock_gettime(CLOCK_REALTIME, &func_start);
+	clock_gettime(CLOCK_REALTIME, &func_end);
 	ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
 	exec_time.push_back(duration);
+	last_update = func_end;
 }
 
 void
