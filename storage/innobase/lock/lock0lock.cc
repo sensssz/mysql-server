@@ -75,6 +75,9 @@ static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
 typedef struct timespec timespec;
 
+std::vector<ulint> exec_time;
+timespec last_update = {0, 0};
+
 /** Deadlock checker. */
 class DeadlockChecker {
 public:
