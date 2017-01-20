@@ -73,6 +73,8 @@ static const ulint	TABLE_LOCK_CACHE = 8;
 /** Size in bytes, of the table lock instance */
 static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
+typedef struct timespec timespec;
+
 /** Deadlock checker. */
 class DeadlockChecker {
 public:
@@ -2991,9 +2993,17 @@ lock_rec_dequeue_from_page(
 	ulint		space;
 	ulint		page_no;
 	ulint		heap_no;
+	timespec		func_start;
+	timespec		func_end;
 	lock_t*		lock;
 	trx_lock_t*	trx_lock;
 	hash_table_t*	lock_hash;
+
+	clock_gettime(CLOCK_REALTIME, &func_start);
+
+	if (func_start.tv_sec - last_update.tv_sec >= 60) {
+		exec_time.clear();
+	}
 
 	ut_ad(lock_mutex_own());
 	ut_ad(lock_get_type_low(in_lock) == LOCK_REC);
@@ -3048,6 +3058,10 @@ lock_rec_dequeue_from_page(
 			}
 		}
 	}
+
+	clock_gettime(CLOCK_REALTIME, &func_start);
+	ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+	exec_time.push_back(duration);
 }
 
 /*************************************************************//**

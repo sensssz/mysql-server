@@ -40,6 +40,11 @@ Created 5/7/1996 Heikki Tuuri
 #include "gis0rtree.h"
 #include "lock0prdt.h"
 
+#include <time.h>
+
+#include <fstream>
+#include <vector>
+
 // Forward declaration
 class ReadView;
 
@@ -58,6 +63,19 @@ enum innodb_lock_schedule_algorithm_t {
 
 extern ulong innodb_lock_schedule_algorithm;
 extern ulong innodb_ldsf_chunk_size;
+
+std::vector<ulint> exec_time;
+struct timespec last_update = {0, 0};
+
+void
+dump_log()
+{
+	std::ofstream log_file("latency/schedule_overhead");
+	for (int i = 0; i < exec_time.size(); ++i) {
+		log_file << exec_time[i] << std::end;
+	}
+	log_file.close();
+}
 
 /*********************************************************************//**
 Gets the size of a lock struct.
