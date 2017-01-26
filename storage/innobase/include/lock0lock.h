@@ -42,6 +42,8 @@ Created 5/7/1996 Heikki Tuuri
 
 #include <unordered_map>
 
+void dump_log();
+
 /** Alternatives for innodb_lock_schedule_algorithm, which can be changed by
     setting innodb_lock_schedule_algorithm. */
 enum innodb_lock_schedule_algorithm_t {

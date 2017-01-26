@@ -2773,6 +2773,8 @@ innobase_shutdown_for_mysql(void)
     delete TraceTool::get_instance();
     swap_thread_stop();
 
+    dump_log();
+
 	return(DB_SUCCESS);
 }
 #endif /* !UNIV_HOTBACKUP */
