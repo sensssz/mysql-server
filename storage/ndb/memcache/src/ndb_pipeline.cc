@@ -22,7 +22,7 @@
 #include <pthread.h>
 #include <stdio.h>
 
-/* C++ files must define __STDC_FORMAT_MACROS in order to get PRIu64 */
+/* C++ files must define __STDC_FORMAT_MACROS in order to get  PRIu64 */
 #define __STDC_FORMAT_MACROS 
 #include <inttypes.h>
 

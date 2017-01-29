@@ -1092,6 +1092,8 @@ struct trx_t {
 	clock_t		start_time_micro;
 	long			dep_size;
 	bool			size_updated;
+    long            finish_time;
+    bool            time_updated;
 	long			seq;
 	lsn_t		commit_lsn;	/*!< lsn at the time of the commit */
 	table_id_t	table_id;	/*!< Table to drop iff dict_operation

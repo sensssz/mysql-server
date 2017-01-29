@@ -50,8 +50,12 @@ Created 5/7/1996 Heikki Tuuri
 #include "pars0pars.h"
 
 #include <algorithm>
+#include <unordered_map>
 #include <set>
 #include <vector>
+#include <tuple>
+
+using std::unordered_map;
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
@@ -1629,6 +1633,304 @@ reset_trx_size_updated()
 }
 
 static
+std::tuple<std::vector<lock_t*>, std::vector<lock_t*>, std::vector<lock_t*>, std::vector<lock_t*> >
+get_queue(
+	hash_table_t *hash,
+	ulint   space,
+	ulint   page_no,
+	ulint   heap_no)
+{
+    std::vector<lock_t*> queue;
+    std::vector<lock_t*> read;
+    std::vector<lock_t*> non_rw;
+    std::vector<lock_t*> granted;
+	for (lock_t* lock = lock_rec_get_first(hash, space, page_no, heap_no);
+		 lock != NULL;
+		 lock = lock_rec_get_next(heap_no, lock)) {
+        if (!lock_get_wait(lock)) {
+            granted.push_back(lock);
+        } else if (lock_get_mode(lock) == LOCK_X) {
+            queue.push_back(lock);
+        } else if (lock_get_mode(lock) == LOCK_S) {
+            if (read.empty()) {
+                queue.push_back(lock);
+            }
+            read.push_back(lock);
+        } else {
+            non_rw.push_back(lock);
+        }
+    }
+    return std::make_tuple(queue, read, non_rw, granted);
+}
+
+class triplet
+{
+public:
+    hash_table_t* hash;
+    ulint page_no;
+    ulint heap_no;
+    
+    triplet(hash_table_t* hash, ulint page_no, ulint heap_no) :
+        hash (hash),
+        page_no (page_no),
+        heap_no (heap_no) {}
+
+    bool operator==(const triplet& k) const
+    {
+        return (k.hash == hash) && (k.page_no == page_no) && (k.heap_no == heap_no);
+    }
+};
+
+struct hash_triplet
+{
+    size_t operator()(const triplet& k) const 
+    {
+        size_t res = 17;
+        res = res * 31 + std::hash<ulint>()(k.page_no);
+        res = res * 31 + std::hash<ulint>()(k.heap_no);
+        return res;
+    };
+};
+
+class RT
+{
+public:
+    static 
+    unordered_map<triplet, long, hash_triplet>
+    release_time;
+};
+unordered_map<triplet, long, hash_triplet> RT::release_time;
+
+static
+long
+get_release_time(
+	hash_table_t *hash,
+	ulint   page_no,
+	ulint   heap_no)
+{
+    triplet t(hash, page_no, heap_no);
+    return RT::release_time[t];
+}
+
+static
+void 
+change_release_time(
+	hash_table_t *hash,
+	ulint   page_no,
+	ulint   heap_no,
+    long    val)
+{
+    triplet t(hash, page_no, heap_no);
+    RT::release_time[t] = val;
+}
+        
+// swap two locks
+static
+void
+swap_locks(
+    lock_t* lock1,
+    lock_t* lock2)
+{
+    ulint space = lock1->un_member.rec_lock.space;
+    ulint page_no = lock1->un_member.rec_lock.page_no;
+    hash_table_t* hash = lock_hash_get(lock1->type_mode);
+
+    ulint rec_fold = lock_rec_fold(space, page_no);
+    auto cell = hash_get_nth_cell(hash, hash_calc_hash(rec_fold, hash));
+
+    lock_t** lock1_prev = NULL;
+    lock_t** lock2_prev = NULL;
+
+    if (lock1 == cell->node) {
+        lock1_prev = (lock_t**) &cell->node;
+    }
+
+    for (lock_t* lock = (lock_t*) cell->node; lock != NULL; lock = lock->hash) {
+        if (lock->hash == lock1) {
+            lock1_prev = &lock->hash;
+        }
+        if (lock->hash == lock2) {
+            lock2_prev = &lock->hash;
+        }
+    }
+    lock_t* lock1_next = lock1->hash;
+    lock_t* lock2_next = lock2->hash;
+
+    if (lock1->hash == lock2) {
+        *lock1_prev = lock2;
+        lock1->hash = lock2_next;
+        lock2->hash = lock1;
+    } else {
+        lock1->hash = lock2_next;
+        lock2->hash = lock1_next;
+        *lock1_prev = lock2;
+        *lock2_prev = lock1;
+    }
+}
+
+static
+long
+update_lock_release_time(
+    lock_t* lock,
+    long inc);
+
+static
+long
+update_trx_finish_time(
+    trx_t* trx,
+    long new_val,
+    long inc)
+{
+    if (trx->time_updated)
+        return inc;
+
+    trx->time_updated = true;
+
+    inc += new_val - trx->finish_time;
+    trx->finish_time = new_val;
+
+    for (lock_t* lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
+         lock != NULL;
+         lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+        if ((lock_get_mode(lock) == LOCK_S || lock_get_mode(lock) == LOCK_X)
+             && !lock_get_wait(lock)) {
+            inc = update_lock_release_time(lock, inc);
+        }
+    }
+    trx->time_updated = false;
+    return inc;
+}
+
+static
+long
+find_max_finish_time(
+	hash_table_t *hash,
+	ulint   space,
+	ulint   page_no,
+	ulint   heap_no)
+{
+    long max_finish_time = 0;
+
+    for (lock_t* lock = lock_rec_get_first(hash, space, page_no, heap_no);
+         lock != NULL;
+         lock = lock_rec_get_next(heap_no, lock)) {
+        if (lock_get_wait(lock))
+            continue;
+
+        if (lock->trx->finish_time > max_finish_time) {
+            max_finish_time = lock->trx->finish_time;
+        }
+    }
+
+    return max_finish_time;
+}
+
+static
+long
+update_lock_release_time(
+    lock_t* in_lock,
+    long inc)
+{
+    ulint space = in_lock->un_member.rec_lock.space;
+    ulint page_no = in_lock->un_member.rec_lock.page_no;
+    hash_table_t* hash = lock_hash_get(in_lock->type_mode);
+    ulint nbits = lock_rec_get_n_bits(in_lock);
+
+    for (ulint heap_no = 0; heap_no < nbits; ++heap_no) {
+        if (!lock_rec_get_nth_bit(in_lock, heap_no))
+            continue;
+
+        long new_release_time = find_max_finish_time(hash, space, page_no, heap_no);
+        long original_release_time = get_release_time(hash, page_no, heap_no);
+
+        if (original_release_time == new_release_time)
+            continue;
+
+        auto queues = get_queue(hash, space, page_no, heap_no);
+        auto queue = std::get<0>(queues);
+        auto read = std::get<1>(queues);
+        for (long i = 0; i < queue.size(); ++i)
+        {
+            lock_t* lock = queue[i];
+            if (lock_get_mode(lock) == LOCK_S) {
+                for (auto lock : read) {
+                    inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc);
+                }
+            } else {
+                inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc);
+            }
+        }
+    }
+    return inc;
+}
+
+static
+void
+local_update(
+	hash_table_t *hash,
+	ulint   space,
+	ulint   page_no,
+	ulint   heap_no)
+{
+    auto queues = get_queue(hash, space, page_no, heap_no);
+    auto queue = std::get<0>(queues);
+    auto read = std::get<1>(queues);
+
+    long release_time = get_release_time(hash, page_no, heap_no);
+
+    for (int i = queue.size() - 2; i >= 0; --i) {
+        lock_t* lock1 = queue[i];
+        lock_t* lock2 = queue[i + 1];
+
+        int inc = 0;
+        inc = update_trx_finish_time(lock1->trx, release_time + i + 2, inc);
+        inc = update_trx_finish_time(lock2->trx, release_time + i + 1, inc);
+
+        if (inc >= 0)
+        {
+            inc = update_trx_finish_time(lock1->trx, release_time + i + 1, inc);
+            inc = update_trx_finish_time(lock2->trx, release_time + i + 2, inc);
+        } else {
+            swap_locks(lock1, lock2);
+            queue[i] = lock2;
+            queue[i + 1] = lock1;
+        }
+    }
+}
+
+static
+void
+insert_to_queue(
+    lock_t* lock,
+    ulint   heap_no,
+    bool    wait) 
+{
+	ulint space = lock->un_member.rec_lock.space;
+	ulint page_no = lock->un_member.rec_lock.page_no;
+	hash_table_t* hash = lock_hash_get(lock->type_mode);
+
+    if (!wait) {
+        change_release_time(hash, page_no, heap_no, lock->trx->finish_time);
+    } else {
+        auto queues = get_queue(hash, space, page_no, heap_no);
+        auto queue = std::get<0>(queues);
+        auto read = std::get<1>(queues);
+
+        if (lock_get_mode(lock) == LOCK_S) { 
+            if (read.empty()) {
+                update_trx_finish_time(lock->trx, queue.back()->trx->finish_time + 1, 0);
+            } else {
+                update_trx_finish_time(lock->trx, read.front()->trx->finish_time + 1, 0);
+            }
+        } else if (lock_get_mode(lock) == LOCK_X) {
+            update_trx_finish_time(lock->trx, queue.back()->trx->finish_time + 1, 0);
+        }
+
+        local_update(hash, space, page_no, heap_no);
+    }
+}
+
+static
 void
 update_dep_size(
 	trx_t  *trx,
@@ -1755,7 +2057,8 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 	if (wait) {
 		lock_set_lock_and_trx_wait(lock, lock->trx);
 	} else {
-		update_dep_size(lock, lock_rec_find_set_bit(lock), false);
+		// update_dep_size(lock, lock_rec_find_set_bit(lock), false);
+        insert_to_queue(lock, lock_rec_find_set_bit(lock), false);
 	}
 }
 
@@ -1979,7 +2282,8 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 
 	ut_ad(trx_mutex_own(m_trx));
 
-	update_dep_size(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
+	// update_dep_size(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
+    insert_to_queue(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
 
 	/* m_trx->mysql_thd is NULL if it's an internal trx. So current_thd is used */
 	if (err == DB_LOCK_WAIT) {
@@ -2081,7 +2385,8 @@ lock_rec_add_to_queue(
 		if (lock != NULL) {
 
 			lock_rec_set_nth_bit(lock, heap_no);
-			update_dep_size(lock, heap_no, false);
+			// update_dep_size(lock, heap_no, false);
+            insert_to_queue(lock, heap_no, false);
 
 			return;
 		}
@@ -2165,7 +2470,8 @@ lock_rec_lock_fast(
 			if (!lock_rec_get_nth_bit(lock, heap_no)) {
 				lock_rec_set_nth_bit(lock, heap_no);
 				status = LOCK_REC_SUCCESS_CREATED;
-				update_dep_size(lock, heap_no, false);
+				// update_dep_size(lock, heap_no, false);
+                insert_to_queue(lock, heap_no, false);
 			}
 		}
 
@@ -2694,6 +3000,64 @@ lock_rec_has_to_wait_granted(
 	return NULL;
 }
 
+static 
+void
+swap_grant(
+    hash_table_t *lock_hash,
+    lock_t* released_lock,
+    ulint heap_no)
+{
+	ulint space = released_lock->un_member.rec_lock.space;
+	ulint page_no = released_lock->un_member.rec_lock.page_no;
+	ulint rec_fold = lock_rec_fold(space, page_no);
+
+    local_update(lock_hash, space, page_no, heap_no);
+
+    auto queues = get_queue(lock_hash, space, page_no, heap_no);
+    auto queue = std::get<0>(queues);
+    auto read = std::get<1>(queues);
+    auto non_rw = std::get<2>(queues);
+    auto granted = std::get<3>(queues);
+
+    std::vector<lock_t*> new_granted;
+
+    if (lock_get_mode(queue.front()) == LOCK_X) {
+        lock_t* lock = queue.front();
+		if (!lock_rec_has_to_wait_granted(lock, granted)) {
+			lock_grant(lock);
+			HASH_DELETE(lock_t, hash, lock_hash,
+									rec_fold, lock);
+			lock_rec_insert_to_head(lock_hash, lock, rec_fold);
+			new_granted.push_back(lock);
+        }
+    } else if (lock_get_mode(queue.front()) == LOCK_S) {
+        for (lock_t* lock : read) {
+		    if (!lock_rec_has_to_wait_granted(lock, granted)) {
+		        lock_grant(lock);
+		        HASH_DELETE(lock_t, hash, lock_hash,
+		        							rec_fold, lock);
+		        lock_rec_insert_to_head(lock_hash, lock, rec_fold);
+		        new_granted.push_back(lock);
+            } 
+        }
+    }
+
+    for (lock_t* lock : non_rw) {
+		if (!lock_rec_has_to_wait_in_queue(lock)) {
+			lock_grant(lock);
+			HASH_DELETE(lock_t, hash, lock_hash,
+									rec_fold, lock);
+			lock_rec_insert_to_head(lock_hash, lock, rec_fold);
+			new_granted.push_back(lock);
+		}
+	}
+
+    for (lock_t* lock : new_granted) {
+        trx_t* trx = lock->trx;
+        update_trx_finish_time(trx, 1, 0);
+    }
+}
+
 static
 void
 vats_grant(
@@ -3081,7 +3445,8 @@ lock_rec_dequeue_from_page(
 				continue;
 			}
 			if (use_vats(in_lock->trx)) {
-				vats_grant(lock_hash, in_lock, heap_no);
+				// vats_grant(lock_hash, in_lock, heap_no);
+                swap_grant(lock_hash, in_lock, heap_no);
 			} else if(use_ldsf(in_lock->trx)) {
 				ldsf_grant(lock_hash, in_lock, heap_no);
 			}
@@ -4926,7 +5291,8 @@ released:
 			}
 		}
 	} else if (use_vats(trx)) {
-		vats_grant(lock_sys->rec_hash, lock, heap_no);
+		// vats_grant(lock_sys->rec_hash, lock, heap_no);
+        swap_grant(lock_sys->rec_hash, lock, heap_no);
 	} else if (use_ldsf(trx)) {
 		ldsf_grant(lock_sys->rec_hash, lock, heap_no);
 	}

@@ -230,7 +230,7 @@ TEST_F(Misc, CountDecimalDigit_fast) {
 TEST_F(Misc, CountDecimalDigit64_VerifyFast) {
     uint64_t i = 1, j;
     do {
-        //printf("%" PRIu64 "\n", i);
+        //printf("%"  PRIu64 "\n", i);
         ASSERT_EQ(CountDecimalDigit64_enroll4(i), CountDecimalDigit64_fast(i));
         j = i;
         i *= 3;

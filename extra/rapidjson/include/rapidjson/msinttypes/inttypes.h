@@ -135,7 +135,7 @@ typedef struct {
 #define PRIXFAST32   "I32X"
 
 #define PRIo64       "I64o"
-#define PRIu64       "I64u"
+#define  PRIu64       "I64u"
 #define PRIx64       "I64x"
 #define PRIX64       "I64X"
 #define PRIoLEAST64  "I64o"

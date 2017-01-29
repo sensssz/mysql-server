@@ -1662,7 +1662,7 @@ convert_to_char(
 	if (value_len == 8) {
 		if (is_unsigned) {
 			uint64_t	int_val = *(uint64_t*)value;
-			snprintf(buf, buf_len, "%" PRIu64, int_val);
+			snprintf(buf, buf_len, "%"  PRIu64, int_val);
 		} else {
 			int64_t		int_val = *(int64_t*)value;
 			snprintf(buf, buf_len, "%" PRIi64, int_val);

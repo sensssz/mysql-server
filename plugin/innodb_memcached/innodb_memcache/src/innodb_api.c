@@ -1541,7 +1541,7 @@ innodb_api_arithmetic(
 		/* If create is true, insert a new row */
 		if (create) {
 			snprintf(value_buf, sizeof(value_buf),
-				 "%" PRIu64, initial);
+				 "%"  PRIu64, initial);
 			create_new = true;
 			goto create_new_value;
 		} else {
@@ -1615,7 +1615,7 @@ innodb_api_arithmetic(
 		}
 	}
 
-	snprintf(value_buf, sizeof(value_buf), "%" PRIu64, value);
+	snprintf(value_buf, sizeof(value_buf), "%"  PRIu64, value);
 create_new_value:
 	*cas = mci_get_cas(engine);
 
