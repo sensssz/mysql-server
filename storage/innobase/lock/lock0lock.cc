@@ -1632,6 +1632,88 @@ reset_trx_size_updated()
 	}
 }
 
+class triplet
+{
+public:
+    ulint space;
+    ulint page_no;
+    ulint heap_no;
+    
+    triplet(ulint space, ulint page_no, ulint heap_no) :
+        space (space),
+        page_no (page_no),
+        heap_no (heap_no) {}
+
+    bool operator==(const triplet& k) const
+    {
+        return (k.space == space) && (k.page_no == page_no) && (k.heap_no == heap_no);
+    }
+};
+
+struct hash_triplet
+{
+    size_t operator()(const triplet& k) const 
+    {
+        size_t res = 17;
+        res = res * 31 + std::hash<ulint>()(k.space);
+        res = res * 31 + std::hash<ulint>()(k.page_no);
+        res = res * 31 + std::hash<ulint>()(k.heap_no);
+        return res;
+    };
+};
+
+class RT
+{
+public:
+    static 
+    unordered_map<triplet, long, hash_triplet>
+    release_time;
+
+//    static
+//    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
+//    wait_queue;
+//
+//    static
+//    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
+//    read_queue;
+//
+//    static
+//    LockMutex 
+//    mutex;
+//
+//    static
+//    void 
+//    getMutex() { mutex_enter(&mutex); }
+//
+//    static
+//    void
+//    releaseMutex() { mutex_exit(&mutex); }
+};
+unordered_map<triplet, long, hash_triplet> RT::release_time;
+// unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::wait_queue;
+// unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::read_queue;
+// LockMutex RT::mutex;
+
+// static
+// std::vector<lock_t*>&
+// get_wait_queue(
+//     ulint space,
+//     ulint page_no,
+//     ulint heap_no)
+// {
+//     return RT::wait_queue[triplet(space, page_no, heap_no)];
+// }
+// 
+// static
+// std::vector<lock_t*>&
+// get_read_queue(
+//     ulint space,
+//     ulint page_no,
+//     ulint heap_no)
+// {
+//     return RT::read_queue[triplet(space, page_no, heap_no)];
+// }
+
 static
 std::tuple<std::vector<lock_t*>, std::vector<lock_t*>, std::vector<lock_t*>, std::vector<lock_t*> >
 get_queue(
@@ -1640,6 +1722,7 @@ get_queue(
 	ulint   page_no,
 	ulint   heap_no)
 {
+    // fprintf(stderr, "start get queue\n");
     std::vector<lock_t*> queue;
     std::vector<lock_t*> read;
     std::vector<lock_t*> non_rw;
@@ -1660,67 +1743,30 @@ get_queue(
             non_rw.push_back(lock);
         }
     }
+    // fprintf(stderr, "end get queue\n");
     return std::make_tuple(queue, read, non_rw, granted);
 }
-
-class triplet
-{
-public:
-    hash_table_t* hash;
-    ulint page_no;
-    ulint heap_no;
-    
-    triplet(hash_table_t* hash, ulint page_no, ulint heap_no) :
-        hash (hash),
-        page_no (page_no),
-        heap_no (heap_no) {}
-
-    bool operator==(const triplet& k) const
-    {
-        return (k.hash == hash) && (k.page_no == page_no) && (k.heap_no == heap_no);
-    }
-};
-
-struct hash_triplet
-{
-    size_t operator()(const triplet& k) const 
-    {
-        size_t res = 17;
-        res = res * 31 + std::hash<ulint>()(k.page_no);
-        res = res * 31 + std::hash<ulint>()(k.heap_no);
-        return res;
-    };
-};
-
-class RT
-{
-public:
-    static 
-    unordered_map<triplet, long, hash_triplet>
-    release_time;
-};
-unordered_map<triplet, long, hash_triplet> RT::release_time;
 
 static
 long
 get_release_time(
-	hash_table_t *hash,
+    ulint space,
 	ulint   page_no,
 	ulint   heap_no)
 {
-    triplet t(hash, page_no, heap_no);
+    triplet t(space, page_no, heap_no);
     return RT::release_time[t];
 }
 
 static
 void 
 change_release_time(
-	hash_table_t *hash,
+    ulint   space,
 	ulint   page_no,
 	ulint   heap_no,
     long    val)
 {
-    triplet t(hash, page_no, heap_no);
+    triplet t(space, page_no, heap_no);
     RT::release_time[t] = val;
 }
         
@@ -1760,6 +1806,10 @@ swap_locks(
         *lock1_prev = lock2;
         lock1->hash = lock2_next;
         lock2->hash = lock1;
+    } else if (lock2->hash == lock1) {
+        *lock2_prev = lock1;
+        lock1->hash = lock2;
+        lock2->hash = lock1_next;
     } else {
         lock1->hash = lock2_next;
         lock2->hash = lock1_next;
@@ -1772,19 +1822,36 @@ static
 long
 update_lock_release_time(
     lock_t* lock,
-    long inc);
+    long inc,
+    int depth = 0,
+    bool forceupdate = false);
 
 static
 long
 update_trx_finish_time(
     trx_t* trx,
     long new_val,
-    long inc)
+    long inc,
+    int depth = 0,
+    bool forceupdate = false);
+
+static
+long
+update_trx_finish_time(
+    trx_t* trx,
+    long new_val,
+    long inc,
+    int depth,
+    bool forceupdate)
 {
     if (trx->time_updated)
         return inc;
 
+    // fprintf(stderr, "update trx %p\n", trx);
+
     trx->time_updated = true;
+
+    // if (depth > 1000) fprintf(stderr, "FUCK\n");
 
     inc += new_val - trx->finish_time;
     trx->finish_time = new_val;
@@ -1794,9 +1861,10 @@ update_trx_finish_time(
          lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
         if ((lock_get_mode(lock) == LOCK_S || lock_get_mode(lock) == LOCK_X)
              && !lock_get_wait(lock)) {
-            inc = update_lock_release_time(lock, inc);
+            inc = update_lock_release_time(lock, inc, depth + 1, forceupdate);
         }
     }
+    // fprintf(stderr, "finish update trx\n");
     trx->time_updated = false;
     return inc;
 }
@@ -1829,8 +1897,12 @@ static
 long
 update_lock_release_time(
     lock_t* in_lock,
-    long inc)
+    long inc,
+    int depth,
+    bool forceupdate)
 {
+    // fprintf(stderr, "update lock %p\n", in_lock);
+    // if (depth > 1000) fprintf(stderr, "F**K\n");
     ulint space = in_lock->un_member.rec_lock.space;
     ulint page_no = in_lock->un_member.rec_lock.page_no;
     hash_table_t* hash = lock_hash_get(in_lock->type_mode);
@@ -1841,26 +1913,37 @@ update_lock_release_time(
             continue;
 
         long new_release_time = find_max_finish_time(hash, space, page_no, heap_no);
-        long original_release_time = get_release_time(hash, page_no, heap_no);
+        long original_release_time = get_release_time(space, page_no, heap_no);
+        // fprintf(stderr, "original %d, new %d\n", original_release_time, new_release_time);
 
-        if (original_release_time == new_release_time)
+        if (original_release_time == new_release_time && !forceupdate)
             continue;
+
+        change_release_time(space, page_no, heap_no, new_release_time);
 
         auto queues = get_queue(hash, space, page_no, heap_no);
         auto queue = std::get<0>(queues);
         auto read = std::get<1>(queues);
+
+        // fprintf(stderr, "start get queue\n");
+        // std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
+        // fprintf(stderr, "wait queue %d\n", queue.size());
+        // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
+        // fprintf(stderr, "read queue %d\n", read.size());
         for (long i = 0; i < queue.size(); ++i)
         {
             lock_t* lock = queue[i];
             if (lock_get_mode(lock) == LOCK_S) {
+                // fprintf(stderr, "read len %d\n", read.size());
                 for (auto lock : read) {
-                    inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc);
+                    inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc, depth + 1);
                 }
             } else {
-                inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc);
+                inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc, depth + 1);
             }
         }
     }
+    // fprintf(stderr, "finish update lock\n");
     return inc;
 }
 
@@ -1872,11 +1955,14 @@ local_update(
 	ulint   page_no,
 	ulint   heap_no)
 {
+    // std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
+    // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
+
     auto queues = get_queue(hash, space, page_no, heap_no);
     auto queue = std::get<0>(queues);
     auto read = std::get<1>(queues);
 
-    long release_time = get_release_time(hash, page_no, heap_no);
+    long release_time = get_release_time(space, page_no, heap_no);
 
     for (int i = queue.size() - 2; i >= 0; --i) {
         lock_t* lock1 = queue[i];
@@ -1908,26 +1994,51 @@ insert_to_queue(
 	ulint space = lock->un_member.rec_lock.space;
 	ulint page_no = lock->un_member.rec_lock.page_no;
 	hash_table_t* hash = lock_hash_get(lock->type_mode);
+    // fprintf(stderr, "start insert\n");
 
     if (!wait) {
-        change_release_time(hash, page_no, heap_no, lock->trx->finish_time);
+        // fprintf(stderr, "granted\n");
+        lock->trx->finish_time = 1;
+        change_release_time(space, page_no, heap_no, lock->trx->finish_time);
     } else {
+        // fprintf(stderr, "wait\n");
+
+        // RT::getMutex();
+        // std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
+        // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
+
         auto queues = get_queue(hash, space, page_no, heap_no);
         auto queue = std::get<0>(queues);
         auto read = std::get<1>(queues);
 
+        // fprintf(stderr, "get queues\n");
+
+        long lock_release_time = get_release_time(space, page_no, heap_no);
+
+        // fprintf(stderr, "start update\n");
+
         if (lock_get_mode(lock) == LOCK_S) { 
             if (read.empty()) {
-                update_trx_finish_time(lock->trx, queue.back()->trx->finish_time + 1, 0);
+                // read.push_back(lock);
+                // queue.push_back(lock);
+                update_trx_finish_time(lock->trx, lock_release_time + queue.size() + 1, 0);
             } else {
-                update_trx_finish_time(lock->trx, read.front()->trx->finish_time + 1, 0);
+                // read.push_back(lock);
+                update_trx_finish_time(lock->trx, read.front()->trx->finish_time, 0);
             }
         } else if (lock_get_mode(lock) == LOCK_X) {
-            update_trx_finish_time(lock->trx, queue.back()->trx->finish_time + 1, 0);
+            // queue.push_back(lock);
+            update_trx_finish_time(lock->trx, lock_release_time + queue.size() + 1, 0);
         }
 
+        // fprintf(stderr, "end update\n");
+
         local_update(hash, space, page_no, heap_no);
+
+        // RT::releaseMutex();
     }
+
+    // fprintf(stderr, "end insert\n");
 }
 
 static
@@ -3007,11 +3118,22 @@ swap_grant(
     lock_t* released_lock,
     ulint heap_no)
 {
+    // fprintf(stderr, "start swap grant\n");
+    
 	ulint space = released_lock->un_member.rec_lock.space;
 	ulint page_no = released_lock->un_member.rec_lock.page_no;
 	ulint rec_fold = lock_rec_fold(space, page_no);
 
-    local_update(lock_hash, space, page_no, heap_no);
+    // local_update(lock_hash, space, page_no, heap_no);
+
+    // fprintf(stderr, "local update\n");
+
+    // RT::getMutex();
+    // auto queues = get_queue(lock_hash, space, page_no, heap_no);
+    // std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
+    // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
+    // auto non_rw = queues.first;
+    // auto granted = queues.second;
 
     auto queues = get_queue(lock_hash, space, page_no, heap_no);
     auto queue = std::get<0>(queues);
@@ -3021,26 +3143,37 @@ swap_grant(
 
     std::vector<lock_t*> new_granted;
 
-    if (lock_get_mode(queue.front()) == LOCK_X) {
-        lock_t* lock = queue.front();
-		if (!lock_rec_has_to_wait_granted(lock, granted)) {
-			lock_grant(lock);
-			HASH_DELETE(lock_t, hash, lock_hash,
-									rec_fold, lock);
-			lock_rec_insert_to_head(lock_hash, lock, rec_fold);
-			new_granted.push_back(lock);
-        }
-    } else if (lock_get_mode(queue.front()) == LOCK_S) {
-        for (lock_t* lock : read) {
-		    if (!lock_rec_has_to_wait_granted(lock, granted)) {
-		        lock_grant(lock);
-		        HASH_DELETE(lock_t, hash, lock_hash,
-		        							rec_fold, lock);
-		        lock_rec_insert_to_head(lock_hash, lock, rec_fold);
-		        new_granted.push_back(lock);
-            } 
+    // fprintf(stderr, "get queues\n");
+    // fprintf(stderr, "queue size = %d, read size = %d\n", queue.size(), read.size());
+
+    if (!queue.empty()) {
+        if (lock_get_mode(queue.front()) == LOCK_X) {
+            lock_t* lock = queue.front();
+	    	if (!lock_rec_has_to_wait_granted(lock, granted)) {
+	    		lock_grant(lock);
+	    		HASH_DELETE(lock_t, hash, lock_hash,
+	    								rec_fold, lock);
+	    		lock_rec_insert_to_head(lock_hash, lock, rec_fold);
+	    		new_granted.push_back(lock);
+                // queue.erase(queue.begin());
+            }
+        } else if (lock_get_mode(queue.front()) == LOCK_S) {
+            lock_t* first_lock = queue.front();
+            if (!lock_rec_has_to_wait_granted(first_lock, granted)) {
+                for (lock_t* lock : read) {
+	    	        lock_grant(lock);
+	    	        HASH_DELETE(lock_t, hash, lock_hash,
+	    	        							rec_fold, lock);
+	    	        lock_rec_insert_to_head(lock_hash, lock, rec_fold);
+	    	        new_granted.push_back(lock);
+                }
+                // read.clear();
+                // queue.erase(queue.begin());
+            }
         }
     }
+
+    // RT::releaseMutex();
 
     for (lock_t* lock : non_rw) {
 		if (!lock_rec_has_to_wait_in_queue(lock)) {
@@ -3054,8 +3187,11 @@ swap_grant(
 
     for (lock_t* lock : new_granted) {
         trx_t* trx = lock->trx;
-        update_trx_finish_time(trx, 1, 0);
+        // fprintf(stderr, "grant lock %p\n", lock);
+        update_trx_finish_time(trx, 1, 0, 0, true);
     }
+
+    // fprintf(stderr, "end swap grant\n");
 }
 
 static
@@ -3228,7 +3364,6 @@ ldsf_grant(
 			} else if (lock_get_mode(lock) == LOCK_X) {
 				write_locks.push_back(lock);
 			} else {
-                fprintf(stderr, "\n Non-rw-locks \n");
 				non_rw_locks.push_back(lock);
 			}
 		}
@@ -3417,6 +3552,7 @@ lock_rec_dequeue_from_page(
                     ++num_write;
             }
         }
+        // fprintf(stderr, "%d %d\n", num_read, num_write);
 
         read_len.push_back(num_read);
         write_len.push_back(num_write);
