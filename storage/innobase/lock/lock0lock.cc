@@ -1930,7 +1930,7 @@ update_lock_release_time(
         // fprintf(stderr, "wait queue %d\n", queue.size());
         // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
         // fprintf(stderr, "read queue %d\n", read.size());
-        for (long i = 0; i < queue.size(); ++i)
+        for (long i = queue.size() - 1; i >= 0; --i)
         {
             lock_t* lock = queue[i];
             if (lock_get_mode(lock) == LOCK_S) {
@@ -1999,7 +1999,9 @@ insert_to_queue(
     if (!wait) {
         // fprintf(stderr, "granted\n");
         lock->trx->finish_time = 1;
-        change_release_time(space, page_no, heap_no, lock->trx->finish_time);
+        long original_release_time = get_release_time(space, page_no, heap_no);
+        if (original_release_time < 1)
+            change_release_time(space, page_no, heap_no, 1);
     } else {
         // fprintf(stderr, "wait\n");
 
