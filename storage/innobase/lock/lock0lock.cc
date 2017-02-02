@@ -83,6 +83,8 @@ std::vector<ulint> exec_time;
 std::vector<int> read_len;
 std::vector<int> write_len;
 timespec last_update = {0, 0};
+std::vector<ulint> update_time;
+std::vector<ulint> lu_time;
 
 /** Deadlock checker. */
 class DeadlockChecker {
@@ -1955,6 +1957,14 @@ local_update(
 	ulint   page_no,
 	ulint   heap_no)
 {
+    timespec    lu_start;
+    timespec    lu_end;
+    timespec    update_start;
+    timespec    update_end;
+    ulint       duration;
+
+    clock_gettime(CLOCK_REALTIME, &lu_start);
+
     // std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
     // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
 
@@ -1969,19 +1979,40 @@ local_update(
         lock_t* lock2 = queue[i + 1];
 
         int inc = 0;
+        
+        clock_gettime(CLOCK_REALTIME, &update_start);
         inc = update_trx_finish_time(lock1->trx, release_time + i + 2, inc);
+        clock_gettime(CLOCK_REALTIME, &update_end);
+	    duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
+
+        clock_gettime(CLOCK_REALTIME, &update_start);
         inc = update_trx_finish_time(lock2->trx, release_time + i + 1, inc);
+        clock_gettime(CLOCK_REALTIME, &update_end);
+	    duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
 
         if (inc >= 0)
         {
+            clock_gettime(CLOCK_REALTIME, &update_start);
             inc = update_trx_finish_time(lock1->trx, release_time + i + 1, inc);
+            clock_gettime(CLOCK_REALTIME, &update_end);
+	        duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
+            update_time.push_back(duration);
+
+            clock_gettime(CLOCK_REALTIME, &update_start);
             inc = update_trx_finish_time(lock2->trx, release_time + i + 2, inc);
+            clock_gettime(CLOCK_REALTIME, &update_end);
+	        duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
+            update_time.push_back(duration);
         } else {
             swap_locks(lock1, lock2);
             queue[i] = lock2;
             queue[i + 1] = lock1;
         }
     }
+    
+    clock_gettime(CLOCK_REALTIME, &lu_end);
+    duration = (lu_end.tv_sec - lu_start.tv_sec) * 1E9 + (lu_end.tv_nsec - lu_start.tv_nsec);
+    lu_time.push_back(duration);
 }
 
 static
@@ -1991,6 +2022,10 @@ insert_to_queue(
     ulint   heap_no,
     bool    wait) 
 {
+    timespec    update_start;
+    timespec    update_end;
+    ulint       duration;
+
 	ulint space = lock->un_member.rec_lock.space;
 	ulint page_no = lock->un_member.rec_lock.page_no;
 	hash_table_t* hash = lock_hash_get(lock->type_mode);
@@ -2023,14 +2058,26 @@ insert_to_queue(
             if (read.empty()) {
                 // read.push_back(lock);
                 // queue.push_back(lock);
+                clock_gettime(CLOCK_REALTIME, &update_start);
                 update_trx_finish_time(lock->trx, lock_release_time + queue.size() + 1, 0);
+                clock_gettime(CLOCK_REALTIME, &update_end);
+	            duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
+                update_time.push_back(duration);
             } else {
                 // read.push_back(lock);
+                clock_gettime(CLOCK_REALTIME, &update_start);
                 update_trx_finish_time(lock->trx, read.front()->trx->finish_time, 0);
+                clock_gettime(CLOCK_REALTIME, &update_end);
+	            duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
+                update_time.push_back(duration);
             }
         } else if (lock_get_mode(lock) == LOCK_X) {
             // queue.push_back(lock);
+            clock_gettime(CLOCK_REALTIME, &update_start);
             update_trx_finish_time(lock->trx, lock_release_time + queue.size() + 1, 0);
+            clock_gettime(CLOCK_REALTIME, &update_end);
+	        duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
+            update_time.push_back(duration);
         }
 
         // fprintf(stderr, "end update\n");
@@ -2170,8 +2217,10 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 	if (wait) {
 		lock_set_lock_and_trx_wait(lock, lock->trx);
 	} else {
-		// update_dep_size(lock, lock_rec_find_set_bit(lock), false);
-        insert_to_queue(lock, lock_rec_find_set_bit(lock), false);
+        if (use_ldsf(lock->trx))
+		    update_dep_size(lock, lock_rec_find_set_bit(lock), false);
+        else if (use_vats(lock->trx))
+            insert_to_queue(lock, lock_rec_find_set_bit(lock), false);
 	}
 }
 
@@ -2395,8 +2444,10 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 
 	ut_ad(trx_mutex_own(m_trx));
 
-	// update_dep_size(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
-    insert_to_queue(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
+    if (use_ldsf(lock->trx))
+	    update_dep_size(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
+    else if (use_vats(lock->trx))
+        insert_to_queue(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
 
 	/* m_trx->mysql_thd is NULL if it's an internal trx. So current_thd is used */
 	if (err == DB_LOCK_WAIT) {
@@ -2498,8 +2549,10 @@ lock_rec_add_to_queue(
 		if (lock != NULL) {
 
 			lock_rec_set_nth_bit(lock, heap_no);
-			// update_dep_size(lock, heap_no, false);
-            insert_to_queue(lock, heap_no, false);
+            if (use_ldsf(lock->trx))
+			    update_dep_size(lock, heap_no, false);
+            else if (use_vats(lock->trx))
+                insert_to_queue(lock, heap_no, false);
 
 			return;
 		}
@@ -2583,8 +2636,10 @@ lock_rec_lock_fast(
 			if (!lock_rec_get_nth_bit(lock, heap_no)) {
 				lock_rec_set_nth_bit(lock, heap_no);
 				status = LOCK_REC_SUCCESS_CREATED;
-				// update_dep_size(lock, heap_no, false);
-                insert_to_queue(lock, heap_no, false);
+                if(use_ldsf(lock->trx))
+				    update_dep_size(lock, heap_no, false);
+                else if (use_vats(lock->trx))
+                    insert_to_queue(lock, heap_no, false);
 			}
 		}
 
@@ -3120,13 +3175,17 @@ swap_grant(
     lock_t* released_lock,
     ulint heap_no)
 {
+    timespec    update_start;
+    timespec    update_end;
+    ulint       duration;
+
     // fprintf(stderr, "start swap grant\n");
     
 	ulint space = released_lock->un_member.rec_lock.space;
 	ulint page_no = released_lock->un_member.rec_lock.page_no;
 	ulint rec_fold = lock_rec_fold(space, page_no);
 
-    // local_update(lock_hash, space, page_no, heap_no);
+    local_update(lock_hash, space, page_no, heap_no);
 
     // fprintf(stderr, "local update\n");
 
@@ -3149,8 +3208,22 @@ swap_grant(
     // fprintf(stderr, "queue size = %d, read size = %d\n", queue.size(), read.size());
 
     if (!queue.empty()) {
+        for (auto lock : queue)
+        {
+            if (lock_get_mode(lock) == LOCK_S) {
+                long tot = 0;
+                for (auto read_lock : read) {
+                    tot += read_lock->trx->dep_size;
+                }
+                fprintf(stderr, "%ld(r) ", tot);
+            } else {
+                fprintf(stderr, "%ld ", lock->trx->dep_size);
+            }
+        }
+        fprintf(stderr, "\n");
         if (lock_get_mode(queue.front()) == LOCK_X) {
             lock_t* lock = queue.front();
+            fprintf(stderr, "%ld\n\n", lock->trx->dep_size);
 	    	if (!lock_rec_has_to_wait_granted(lock, granted)) {
 	    		lock_grant(lock);
 	    		HASH_DELETE(lock_t, hash, lock_hash,
@@ -3160,6 +3233,11 @@ swap_grant(
                 // queue.erase(queue.begin());
             }
         } else if (lock_get_mode(queue.front()) == LOCK_S) {
+            long tot = 0;
+            for (auto read_lock : read) {
+                tot += read_lock->trx->dep_size;
+            }
+            fprintf(stderr, "%ld\n\n", tot);
             lock_t* first_lock = queue.front();
             if (!lock_rec_has_to_wait_granted(first_lock, granted)) {
                 for (lock_t* lock : read) {
@@ -3190,7 +3268,11 @@ swap_grant(
     for (lock_t* lock : new_granted) {
         trx_t* trx = lock->trx;
         // fprintf(stderr, "grant lock %p\n", lock);
+        clock_gettime(CLOCK_REALTIME, &update_start);
         update_trx_finish_time(trx, 1, 0, 0, true);
+        clock_gettime(CLOCK_REALTIME, &update_end);
+        duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
+        update_time.push_back(duration);
     }
 
     // fprintf(stderr, "end swap grant\n");
@@ -3626,6 +3708,20 @@ dump_log()
         total_len_file << write_len[i] + read_len[i] << std::endl;
     }
     total_len_file.close();
+
+    std::ofstream update_time_file("latency/update_time");
+    for (size_t i = 0; i < update_time.size(); ++i)
+    {
+        update_time_file << update_time[i] << std::endl;
+    }
+    update_time_file.close();
+
+    std::ofstream lu_time_file("latency/lu_time");
+    for (size_t i = 0; i < lu_time.size(); ++i)
+    {
+        lu_time_file << lu_time[i] << std::endl;
+    }
+    lu_time_file.close();
 }
 
 /*************************************************************//**
