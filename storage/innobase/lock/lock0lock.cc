@@ -76,6 +76,7 @@ static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 typedef struct timespec timespec;
 
 std::vector<ulint> exec_time;
+std::vector<ulint> insert_time;
 std::vector<int> read_len;
 std::vector<int> write_len;
 timespec last_update = {0, 0};
@@ -1732,6 +1733,12 @@ Add the lock to the record lock hash and the transaction's lock list
 void
 RecLock::lock_add(lock_t* lock, bool add_to_hash)
 {
+    timespec start;
+    timespec end;
+
+    clock_gettime(CLOCK_REALTIME, &start)
+
+
 	ut_ad(lock_mutex_own());
 	ut_ad(trx_mutex_own(lock->trx));
 
@@ -1754,9 +1761,13 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 
 	if (wait) {
 		lock_set_lock_and_trx_wait(lock, lock->trx);
-	} else {
+	} else if (use_vats(lock->trx) || use_ldsf(lock->trx)) {
 		update_dep_size(lock, lock_rec_find_set_bit(lock), false);
 	}
+
+    clock_gettime(CLOCK_REALTIME, &end);
+	ulint duration = (end.tv_sec - start.tv_sec) * 1E9 + (end.tv_nsec - start.tv_nsec);
+    insert_time.push_back(duration);
 }
 
 /**
@@ -1949,6 +1960,10 @@ queue is itself waiting roll it back, also do a deadlock check and resolve.
 dberr_t
 RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 {
+    timespec start;
+    timespec end;
+    clock_gettime(CLOCK_REALTIME, &start);
+
 	ut_ad(lock_mutex_own());
 	ut_ad(m_trx == thr_get_trx(m_thr));
 	ut_ad(trx_mutex_own(m_trx));
@@ -1979,12 +1994,17 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 
 	ut_ad(trx_mutex_own(m_trx));
 
-	update_dep_size(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
+    if (use_vats(lock->trx) || use_ldsf(lock->trx)) 
+	    update_dep_size(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
 
 	/* m_trx->mysql_thd is NULL if it's an internal trx. So current_thd is used */
 	if (err == DB_LOCK_WAIT) {
 		thd_report_row_lock_wait(current_thd, wait_for->trx->mysql_thd);
 	}
+
+    clock_gettime(CLOCK_REALTIME, &end);
+	ulint duration = (end.tv_sec - start.tv_sec) * 1E9 + (end.tv_nsec - start.tv_nsec);
+    insert_time.push_back(duration);
 	return(err);
 }
 
@@ -2012,6 +2032,9 @@ lock_rec_add_to_queue(
 					/*!< in: TRUE if caller owns the
 					transaction mutex */
 {
+    timespec start;
+    timespec end;
+    clock_gettime(CLOCK_REALTIME, &start);
 #ifdef UNIV_DEBUG
 	ut_ad(lock_mutex_own());
 	ut_ad(caller_owns_trx_mutex == trx_mutex_own(trx));
@@ -2081,7 +2104,14 @@ lock_rec_add_to_queue(
 		if (lock != NULL) {
 
 			lock_rec_set_nth_bit(lock, heap_no);
-			update_dep_size(lock, heap_no, false);
+
+            if (use_vats(lock->trx) || use_ldsf(lock->trx))
+			    update_dep_size(lock, heap_no, false);
+
+            clock_gettime(CLOCK_REALTIME, &end);
+	        ulint duration = (end.tv_sec - start.tv_sec) * 1E9 + (end.tv_nsec - start.tv_nsec);
+            insert_time.push_back(duration);
+
 
 			return;
 		}
@@ -2090,6 +2120,10 @@ lock_rec_add_to_queue(
 	RecLock		rec_lock(index, block, heap_no, type_mode);
 
 	rec_lock.create(trx, caller_owns_trx_mutex, true);
+
+    clock_gettime(CLOCK_REALTIME, &end);
+	ulint duration = (end.tv_sec - start.tv_sec) * 1E9 + (end.tv_nsec - start.tv_nsec);
+    insert_time.push_back(duration);
 }
 
 /*********************************************************************//**
@@ -2117,6 +2151,10 @@ lock_rec_lock_fast(
 	dict_index_t*		index,	/*!< in: index of record */
 	que_thr_t*		thr)	/*!< in: query thread */
 {
+    timespec start;
+    timespec end;
+    clock_gettime(CLOCK_REALTIME, &start);
+
 	ut_ad(lock_mutex_own());
 	ut_ad(!srv_read_only_mode);
 	ut_ad((LOCK_MODE_MASK & mode) != LOCK_S
@@ -2165,12 +2203,17 @@ lock_rec_lock_fast(
 			if (!lock_rec_get_nth_bit(lock, heap_no)) {
 				lock_rec_set_nth_bit(lock, heap_no);
 				status = LOCK_REC_SUCCESS_CREATED;
-				update_dep_size(lock, heap_no, false);
+                if (use_vats(lock->trx) || use_ldsf(lock->trx))
+				    update_dep_size(lock, heap_no, false);
 			}
 		}
 
 		trx_mutex_exit(trx);
 	}
+
+    clock_gettime(CLOCK_REALTIME, &end);
+	ulint duration = (end.tv_sec - start.tv_sec) * 1E9 + (end.tv_nsec - start.tv_nsec);
+    insert_time.push_back(duration);
 
 	return(status);
 }
@@ -3102,6 +3145,12 @@ dump_log()
 		log_file << exec_time[i] << std::endl;
 	}
 	log_file.close();
+
+    std::ofstream insert_time_file("latency/insert_time");
+    for (size_t i = 0; i < insert_time.size(); ++i) {
+        insert_time_file << insert_time[i] << std::endl;
+    }
+    insert_time_file.close();
 
     std::ofstream read_len_file("latency/read_len");
     for (size_t i = 0; i < read_len.size(); ++i)
