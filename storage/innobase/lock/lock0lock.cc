@@ -54,8 +54,17 @@ Created 5/7/1996 Heikki Tuuri
 #include <set>
 #include <vector>
 #include <tuple>
+#include <deque>
 
+using std::deque;
 using std::unordered_map;
+
+static std::vector<lock_t*>& get_wait_queue(ulint, ulint, ulint);
+static std::vector<lock_t*>& get_read_queue(ulint, ulint, ulint);
+
+static
+void
+remove_from_queue(lock_t*, ulint, ulint, ulint);
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
@@ -80,6 +89,7 @@ static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 typedef struct timespec timespec;
 
 std::vector<ulint> exec_time;
+std::vector<ulint> insert_time;
 std::vector<int> read_len;
 std::vector<int> write_len;
 timespec last_update = {0, 0};
@@ -755,11 +765,16 @@ UNIV_INLINE
 void
 lock_reset_lock_and_trx_wait(
 /*=========================*/
-	lock_t*	lock)	/*!< in/out: record lock */
+	lock_t*	lock,
+    bool called_by_lock_grant = false)	/*!< in/out: record lock */
 {
-	ut_ad(lock->trx->lock.wait_lock == lock);
+    ut_ad(lock->trx->lock.wait_lock == lock);
 	ut_ad(lock_get_wait(lock));
 	ut_ad(lock_mutex_own());
+
+    if (!called_by_lock_grant) {
+        remove_from_queue(lock, lock->un_member.rec_lock.space, lock->un_member.rec_lock.page_no, lock_rec_find_set_bit(lock));
+    }
 
 	lock->trx->lock.wait_lock = NULL;
 	lock->type_mode &= ~LOCK_WAIT;
@@ -1637,20 +1652,43 @@ reset_trx_size_updated()
 class triplet
 {
 public:
+    bool operator!=(const triplet& x) const
+    {
+        return !(*this == x);
+    }
     ulint space;
     ulint page_no;
     ulint heap_no;
+
+    triplet() :
+        space (ULINT_UNDEFINED),
+        page_no (ULINT_UNDEFINED),
+        heap_no (ULINT_UNDEFINED) { }
     
     triplet(ulint space, ulint page_no, ulint heap_no) :
         space (space),
         page_no (page_no),
-        heap_no (heap_no) {}
+        heap_no (heap_no) { }
+
+    triplet(lock_t* lock) {
+        space = lock->un_member.rec_lock.space;
+        page_no = lock->un_member.rec_lock.page_no;
+        heap_no = lock_rec_find_set_bit(lock);
+    }
 
     bool operator==(const triplet& k) const
     {
         return (k.space == space) && (k.page_no == page_no) && (k.heap_no == heap_no);
     }
 };
+
+triplet get_triplet(lock_t* lock) 
+{
+	ulint space = lock->un_member.rec_lock.space;
+	ulint page_no = lock->un_member.rec_lock.page_no;
+    ulint heap_no = lock_rec_find_set_bit(lock);
+    return triplet(space, page_no, heap_no);
+}
 
 struct hash_triplet
 {
@@ -1667,54 +1705,236 @@ struct hash_triplet
 class RT
 {
 public:
-    static 
-    unordered_map<triplet, long, hash_triplet>
-    release_time;
+     static 
+     unordered_map<triplet, long, hash_triplet>
+     release_time;
+ 
+    static
+    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
+    wait_queue;
+ 
+    static
+    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
+    read_queue;
+ 
+    // static
+    // unordered_map<triplet, LockMutex, hash_triplet>
+    // mutex;
 
-//    static
-//    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
-//    wait_queue;
-//
-//    static
-//    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
-//    read_queue;
-//
-//    static
-//    LockMutex 
-//    mutex;
-//
-//    static
-//    void 
-//    getMutex() { mutex_enter(&mutex); }
-//
-//    static
-//    void
-//    releaseMutex() { mutex_exit(&mutex); }
+    static LockMutex mutex;
+    static LockMutex qMutex;
+ 
+    static
+    void 
+    getMutex(
+        ulint space,
+        ulint page_no,
+        ulint heap_no) { 
+ 
+        // mutex_enter(&mutex[triplet(space, page_no, heap_no)]); 
+        fprintf(stderr, "thread %lu: enter mutex %p\n", (ulint) pthread_self(), &mutex);
+        fflush(stderr);
+        mutex_enter(&mutex);
+    }
+ 
+    static
+    void
+    releaseMutex(
+        ulint space,
+        ulint page_no,
+        ulint heap_no) { 
+        
+        // mutex_exit(&mutex[triplet(space, page_no, heap_no)]); 
+        fprintf(stderr, "thread %lu: release mutex %p\n", (ulint) pthread_self(), &mutex);
+        fflush(stderr);
+        mutex_exit(&mutex);
+    }
 };
-unordered_map<triplet, long, hash_triplet> RT::release_time;
-// unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::wait_queue;
-// unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::read_queue;
-// LockMutex RT::mutex;
 
-// static
-// std::vector<lock_t*>&
-// get_wait_queue(
-//     ulint space,
-//     ulint page_no,
-//     ulint heap_no)
-// {
-//     return RT::wait_queue[triplet(space, page_no, heap_no)];
-// }
-// 
-// static
-// std::vector<lock_t*>&
-// get_read_queue(
-//     ulint space,
-//     ulint page_no,
-//     ulint heap_no)
-// {
-//     return RT::read_queue[triplet(space, page_no, heap_no)];
-// }
+unordered_map<triplet, long, hash_triplet> RT::release_time;
+unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::wait_queue;
+unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::read_queue;
+// unordered_map<triplet, LockMutex, hash_triplet> RT::mutex;
+LockMutex RT::mutex;
+LockMutex RT::qMutex;
+
+
+static std::deque<triplet> process_queue;
+// pthread_mutex_t qMutex;
+// pthread_cond_t qCond;
+// LockMutex qMutex;
+
+static
+void
+local_update(ulint, ulint, ulint);
+
+static bool thread_shutdown;
+static bool thread_started = false;
+static pthread_t swap_thread;
+
+extern "C"
+void*
+handle_lock_sys_change_events(
+    void* args)
+{
+    fprintf(stderr, "Swap thread : %lu\n", (ulint) pthread_self());
+    fflush(stderr);
+    while (!thread_shutdown) {
+        fprintf(stderr, "swap thread: start process\n");
+        fflush(stderr);
+        // pthread_mutex_lock(&qMutex);
+        mutex_enter(&RT::qMutex);
+        fprintf(stderr, "swap thread: get mutex\n");
+        fflush(stderr);
+        while (!thread_shutdown &&
+               process_queue.empty()) {
+            // pthread_cond_wait(&qCond, &qMutex);
+            mutex_exit(&RT::qMutex);
+            mutex_enter(&RT::qMutex);
+        }
+        fprintf(stderr, "swap thread: queue not empty\n");
+        fflush(stderr);
+        if (thread_shutdown) {
+            continue;
+        }
+        triplet event = process_queue.front();
+        process_queue.pop_front();
+        //pthread_mutex_unlock(&qMutex);
+        mutex_exit(&RT::qMutex);
+        fprintf(stderr, "swap thread: get triplet [%lu, %lu, %lu]\n", event.space, event.page_no, event.heap_no);
+        fflush(stderr);
+        RT::getMutex(event.space, event.page_no, event.heap_no);
+        fprintf(stderr, "swap thread: get mutex\n", event.space, event.page_no, event.heap_no);
+        fflush(stderr);
+        local_update(event.space, event.page_no, event.heap_no);
+        fprintf(stderr, "swap thread: local update\n", event.space, event.page_no, event.heap_no);
+        fflush(stderr);
+        RT::releaseMutex(event.space, event.page_no, event.heap_no);
+        fprintf(stderr, "swap thread: release mutex\n", event.space, event.page_no, event.heap_no);
+        fflush(stderr);
+    }
+
+    fprintf(stderr, "Swap thread stop\n");
+    fflush(stderr);
+    
+    return NULL;
+}
+
+static
+void
+submit_lock_sys_change(
+/*==============*/
+    ulint           space,      /* !< Space ID of the changed lock. */
+    ulint           page_no,    /* !< Page number of the changed lock. */
+    ulint           heap_no)    /* !< Heap number of the changed lock. */
+{
+    if (!thread_started) {
+        return;
+    }
+
+    triplet event(space, page_no, heap_no);
+    fprintf(stderr, "thread %lu: submit [%lu, %lu, %lu]\n", (ulint) pthread_self(), space, page_no, heap_no);
+    fflush(stderr);
+    // pthread_mutex_lock(&qMutex);
+    mutex_enter(&RT::qMutex);
+    process_queue.push_back(event);
+    // pthread_cond_signal(&qCond);
+    // pthread_mutex_unlock(&qMutex);
+    mutex_exit(&RT::qMutex);
+}
+
+static
+void
+lock_sys_change_create()
+{
+    // pthread_mutex_init(&qMutex, NULL);
+    // pthread_cond_init(&qCond, NULL);
+}
+
+static
+void
+lock_sys_change_stop()
+{
+    // pthread_cond_destroy(&qCond);
+    // pthread_mutex_destroy(&qMutex);
+}
+
+
+/*********************************************************************//**
+Start the swap background thread. */
+void
+swap_thread_start()
+{
+    thread_shutdown = false;
+    lock_sys_change_create();
+    pthread_create(&swap_thread, NULL, handle_lock_sys_change_events, NULL);
+    thread_started = true;
+}
+
+/*********************************************************************//**
+Stop the swap background thread. */
+void
+swap_thread_stop()
+{
+    thread_started = false;
+    thread_shutdown = true;
+    // pthread_cond_signal(&qCond);
+    pthread_join(swap_thread, NULL);
+    lock_sys_change_stop();
+}
+static
+std::vector<lock_t*>&
+get_wait_queue(
+    ulint space,
+    ulint page_no,
+    ulint heap_no)
+{
+    return RT::wait_queue[triplet(space, page_no, heap_no)];
+}
+
+static
+std::vector<lock_t*>&
+get_read_queue(
+    ulint space,
+    ulint page_no,
+    ulint heap_no)
+{
+    return RT::read_queue[triplet(space, page_no, heap_no)];
+}
+
+static
+void
+remove_from_queue(
+    lock_t* in_lock,
+    ulint space,
+    ulint page_no,
+    ulint heap_no)
+{
+    RT::getMutex(space, page_no, heap_no);
+    std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
+    for (auto itr = queue.begin(); itr != queue.end(); ++itr) {
+        if (*itr == in_lock) {
+            queue.erase(itr);
+            break;
+        }
+    }
+
+    if (lock_get_mode(in_lock) != LOCK_S) {
+        RT::releaseMutex(space, page_no, heap_no);
+        return;
+    }
+
+    std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
+    for (auto itr = read.begin(); itr != read.end(); ++itr) {
+        if (*itr == in_lock) {
+            read.erase(itr);
+            break;
+        }
+    }
+
+    RT::releaseMutex(space, page_no, heap_no);
+
+}
 
 static
 std::tuple<std::vector<lock_t*>, std::vector<lock_t*>, std::vector<lock_t*>, std::vector<lock_t*> >
@@ -1729,9 +1949,14 @@ get_queue(
     std::vector<lock_t*> read;
     std::vector<lock_t*> non_rw;
     std::vector<lock_t*> granted;
+    int cnt = 0;
 	for (lock_t* lock = lock_rec_get_first(hash, space, page_no, heap_no);
 		 lock != NULL;
 		 lock = lock_rec_get_next(heap_no, lock)) {
+        if (++cnt % 100 == 0) {
+            fprintf(stderr, "thread %lu, cnt = %d\n", (ulint) pthread_self(), cnt);
+            fflush(stderr);
+        }
         if (!lock_get_wait(lock)) {
             granted.push_back(lock);
         } else if (lock_get_mode(lock) == LOCK_X) {
@@ -1849,7 +2074,7 @@ update_trx_finish_time(
     if (trx->time_updated)
         return inc;
 
-    // fprintf(stderr, "update trx %p\n", trx);
+    // fprintf(stderr, "update trx %p, %lu->%lu, %d\n", trx, trx->finish_time, new_val, trx->time_updated);
 
     trx->time_updated = true;
 
@@ -1857,6 +2082,20 @@ update_trx_finish_time(
 
     inc += new_val - trx->finish_time;
     trx->finish_time = new_val;
+
+    // for (int i = 0; i < depth; ++i) {
+    //     fprintf(stderr, "\t");
+    // }
+    // int cnt = 0;
+    // for (lock_t* lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
+    //      lock != NULL;
+    //      lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+    //     if ((lock_get_mode(lock) == LOCK_S || lock_get_mode(lock) == LOCK_X)
+    //          && !lock_get_wait(lock)) {
+    //         ++cnt;
+    //     }
+    // }
+    // fprintf(stderr, "%d\n", cnt);
 
     for (lock_t* lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
          lock != NULL;
@@ -1923,25 +2162,48 @@ update_lock_release_time(
 
         change_release_time(space, page_no, heap_no, new_release_time);
 
-        auto queues = get_queue(hash, space, page_no, heap_no);
-        auto queue = std::get<0>(queues);
-        auto read = std::get<1>(queues);
+        // auto queues = get_queue(hash, space, page_no, heap_no);
+        // auto queue = std::get<0>(queues);
+        // auto read = std::get<1>(queues);
+
+        std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
+        std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
+
+        // for (int i = 0; i < depth; ++i) {
+        //     fprintf(stderr, "\t");
+        // }
+        // fprintf(stderr, "%d\n", queue.size() + read.size() - (!read.empty()));
 
         // fprintf(stderr, "start get queue\n");
         // std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
         // fprintf(stderr, "wait queue %d\n", queue.size());
         // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
         // fprintf(stderr, "read queue %d\n", read.size());
+
         for (long i = queue.size() - 1; i >= 0; --i)
         {
             lock_t* lock = queue[i];
             if (lock_get_mode(lock) == LOCK_S) {
                 // fprintf(stderr, "read len %d\n", read.size());
                 for (auto lock : read) {
+                    if (!lock_get_wait(lock)) {
+                        continue;
+                    }
                     inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc, depth + 1);
+                    // else {
+                    //     fprintf(stderr, "???\n");
+                    //     fflush(stderr);
+                    // }
                 }
             } else {
+                if (!lock_get_wait(lock)) {
+                    continue;
+                }
                 inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc, depth + 1);
+                // else {
+                //     fprintf(stderr, "???\n");
+                //     fflush(stderr);
+                // }
             }
         }
     }
@@ -1952,7 +2214,7 @@ update_lock_release_time(
 static
 void
 local_update(
-	hash_table_t *hash,
+	// hash_table_t *hash,
 	ulint   space,
 	ulint   page_no,
 	ulint   heap_no)
@@ -1963,14 +2225,17 @@ local_update(
     timespec    update_end;
     ulint       duration;
 
+    fprintf(stderr, "thread %lu: in local update\n", (ulint) pthread_self());
+    fflush(stderr);
+
     clock_gettime(CLOCK_REALTIME, &lu_start);
 
-    // std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
-    // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
+    std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
+    std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
 
-    auto queues = get_queue(hash, space, page_no, heap_no);
-    auto queue = std::get<0>(queues);
-    auto read = std::get<1>(queues);
+    // auto queues = get_queue(hash, space, page_no, heap_no);
+    // auto queue = std::get<0>(queues);
+    // auto read = std::get<1>(queues);
 
     long release_time = get_release_time(space, page_no, heap_no);
 
@@ -2004,7 +2269,7 @@ local_update(
 	        duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
             update_time.push_back(duration);
         } else {
-            swap_locks(lock1, lock2);
+            // swap_locks(lock1, lock2);
             queue[i] = lock2;
             queue[i + 1] = lock1;
         }
@@ -2030,6 +2295,8 @@ insert_to_queue(
 	ulint page_no = lock->un_member.rec_lock.page_no;
 	hash_table_t* hash = lock_hash_get(lock->type_mode);
     // fprintf(stderr, "start insert\n");
+    
+    wait = lock_get_wait(lock);
 
     if (!wait) {
         // fprintf(stderr, "granted\n");
@@ -2040,31 +2307,32 @@ insert_to_queue(
     } else {
         // fprintf(stderr, "wait\n");
 
-        // RT::getMutex();
-        // std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
-        // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
+        RT::getMutex(space, page_no, heap_no);
+        std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
+        std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
 
-        auto queues = get_queue(hash, space, page_no, heap_no);
-        auto queue = std::get<0>(queues);
-        auto read = std::get<1>(queues);
+        // auto queues = get_queue(hash, space, page_no, heap_no);
+        // auto queue = std::get<0>(queues);
+        // auto read = std::get<1>(queues);
 
         // fprintf(stderr, "get queues\n");
 
         long lock_release_time = get_release_time(space, page_no, heap_no);
 
         // fprintf(stderr, "start update\n");
+        
 
         if (lock_get_mode(lock) == LOCK_S) { 
             if (read.empty()) {
-                // read.push_back(lock);
-                // queue.push_back(lock);
+                read.push_back(lock);
+                queue.push_back(lock);
                 clock_gettime(CLOCK_REALTIME, &update_start);
-                update_trx_finish_time(lock->trx, lock_release_time + queue.size() + 1, 0);
+                update_trx_finish_time(lock->trx, lock_release_time + queue.size(), 0);
                 clock_gettime(CLOCK_REALTIME, &update_end);
 	            duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
                 update_time.push_back(duration);
             } else {
-                // read.push_back(lock);
+                read.push_back(lock);
                 clock_gettime(CLOCK_REALTIME, &update_start);
                 update_trx_finish_time(lock->trx, read.front()->trx->finish_time, 0);
                 clock_gettime(CLOCK_REALTIME, &update_end);
@@ -2072,9 +2340,9 @@ insert_to_queue(
                 update_time.push_back(duration);
             }
         } else if (lock_get_mode(lock) == LOCK_X) {
-            // queue.push_back(lock);
+            queue.push_back(lock);
             clock_gettime(CLOCK_REALTIME, &update_start);
-            update_trx_finish_time(lock->trx, lock_release_time + queue.size() + 1, 0);
+            update_trx_finish_time(lock->trx, lock_release_time + queue.size(), 0);
             clock_gettime(CLOCK_REALTIME, &update_end);
 	        duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
             update_time.push_back(duration);
@@ -2082,9 +2350,11 @@ insert_to_queue(
 
         // fprintf(stderr, "end update\n");
 
-        local_update(hash, space, page_no, heap_no);
+        // local_update(hash, space, page_no, heap_no);
+        // local_update(space, page_no, heap_no);
+        submit_lock_sys_change(space, page_no, heap_no);
 
-        // RT::releaseMutex();
+        RT::releaseMutex(space, page_no, heap_no);
     }
 
     // fprintf(stderr, "end insert\n");
@@ -2194,6 +2464,12 @@ Add the lock to the record lock hash and the transaction's lock list
 void
 RecLock::lock_add(lock_t* lock, bool add_to_hash)
 {
+    timespec func_start;
+    timespec func_end;
+    ulint duration;
+
+    clock_gettime(CLOCK_REALTIME, &func_start);
+
 	ut_ad(lock_mutex_own());
 	ut_ad(trx_mutex_own(lock->trx));
 
@@ -2219,9 +2495,15 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 	} else {
         if (use_ldsf(lock->trx))
 		    update_dep_size(lock, lock_rec_find_set_bit(lock), false);
-        else if (use_vats(lock->trx))
+        else if (use_vats(lock->trx)) {
+		    // update_dep_size(lock, lock_rec_find_set_bit(lock), false);
             insert_to_queue(lock, lock_rec_find_set_bit(lock), false);
+        }
 	}
+
+    clock_gettime(CLOCK_REALTIME, &func_end);
+    duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+    // insert_time.push_back(duration);
 }
 
 /**
@@ -2332,6 +2614,7 @@ RecLock::deadlock_check(lock_t* lock)
 		MONITOR_INC(MONITOR_LOCKREC_WAIT);
 	}
 
+
 	return(err);
 }
 
@@ -2414,6 +2697,12 @@ queue is itself waiting roll it back, also do a deadlock check and resolve.
 dberr_t
 RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 {
+    timespec func_start;
+    timespec func_end;
+    ulint duration;
+
+    clock_gettime(CLOCK_REALTIME, &func_start);
+
 	ut_ad(lock_mutex_own());
 	ut_ad(m_trx == thr_get_trx(m_thr));
 	ut_ad(trx_mutex_own(m_trx));
@@ -2434,6 +2723,10 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	/* Attempt to jump over the low priority waiting locks. */
 	if (high_priority && jump_queue(lock, wait_for)) {
 
+        clock_gettime(CLOCK_REALTIME, &func_end);
+        duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+        // insert_time.push_back(duration);
+
 		/* Lock is granted */
 		return(DB_SUCCESS);
 	}
@@ -2446,13 +2739,23 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 
     if (use_ldsf(lock->trx))
 	    update_dep_size(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
-    else if (use_vats(lock->trx))
+    else if (use_vats(lock->trx)) {
+	    // update_dep_size(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
         insert_to_queue(lock, lock_rec_find_set_bit(lock), err == DB_LOCK_WAIT || err == DB_DEADLOCK);
+    }
+
+    bool f = err == DB_LOCK_WAIT || err == DB_DEADLOCK;
 
 	/* m_trx->mysql_thd is NULL if it's an internal trx. So current_thd is used */
 	if (err == DB_LOCK_WAIT) {
 		thd_report_row_lock_wait(current_thd, wait_for->trx->mysql_thd);
 	}
+
+    clock_gettime(CLOCK_REALTIME, &func_end);
+    duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+    if (f)
+        insert_time.push_back(duration);
+
 	return(err);
 }
 
@@ -2480,6 +2783,12 @@ lock_rec_add_to_queue(
 					/*!< in: TRUE if caller owns the
 					transaction mutex */
 {
+    timespec func_start;
+    timespec func_end;
+    ulint duration;
+
+    clock_gettime(CLOCK_REALTIME, &func_start);
+
 #ifdef UNIV_DEBUG
 	ut_ad(lock_mutex_own());
 	ut_ad(caller_owns_trx_mutex == trx_mutex_own(trx));
@@ -2551,8 +2860,14 @@ lock_rec_add_to_queue(
 			lock_rec_set_nth_bit(lock, heap_no);
             if (use_ldsf(lock->trx))
 			    update_dep_size(lock, heap_no, false);
-            else if (use_vats(lock->trx))
+            else if (use_vats(lock->trx)) { 
+			    // update_dep_size(lock, heap_no, false);
                 insert_to_queue(lock, heap_no, false);
+            }
+
+            clock_gettime(CLOCK_REALTIME, &func_end);
+            duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+            // insert_time.push_back(duration);
 
 			return;
 		}
@@ -2561,6 +2876,10 @@ lock_rec_add_to_queue(
 	RecLock		rec_lock(index, block, heap_no, type_mode);
 
 	rec_lock.create(trx, caller_owns_trx_mutex, true);
+
+    clock_gettime(CLOCK_REALTIME, &func_end);
+    duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+    // insert_time.push_back(duration);
 }
 
 /*********************************************************************//**
@@ -2588,6 +2907,12 @@ lock_rec_lock_fast(
 	dict_index_t*		index,	/*!< in: index of record */
 	que_thr_t*		thr)	/*!< in: query thread */
 {
+    timespec func_start;
+    timespec func_end;
+    ulint duration;
+
+    clock_gettime(CLOCK_REALTIME, &func_start);
+
 	ut_ad(lock_mutex_own());
 	ut_ad(!srv_read_only_mode);
 	ut_ad((LOCK_MODE_MASK & mode) != LOCK_S
@@ -2638,13 +2963,19 @@ lock_rec_lock_fast(
 				status = LOCK_REC_SUCCESS_CREATED;
                 if(use_ldsf(lock->trx))
 				    update_dep_size(lock, heap_no, false);
-                else if (use_vats(lock->trx))
+                else if (use_vats(lock->trx)) { 
+				    // update_dep_size(lock, heap_no, false);
                     insert_to_queue(lock, heap_no, false);
+                }
 			}
 		}
 
 		trx_mutex_exit(trx);
 	}
+    
+    clock_gettime(CLOCK_REALTIME, &func_end);
+    duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+    // insert_time.push_back(duration);
 
 	return(status);
 }
@@ -2846,11 +3177,13 @@ lock_grant(
 /*=======*/
 	lock_t*	lock)	/*!< in/out: waiting lock request */
 {
+    // assert(lock_get_wait(lock));
 	ut_ad(lock_mutex_own());
 
-	lock_reset_lock_and_trx_wait(lock);
+	lock_reset_lock_and_trx_wait(lock, true);
 
 	trx_mutex_enter(lock->trx);
+
 
 	if (lock_get_mode(lock) == LOCK_AUTO_INC) {
 		dict_table_t*	table = lock->un_member.tab_lock.table;
@@ -2864,6 +3197,7 @@ lock_grant(
 			ib_vector_push(lock->trx->autoinc_locks, &lock);
 		}
 	}
+
 
 	DBUG_PRINT("ib_lock", ("wait for trx " TRX_ID_FMT " ends",
 			       trx_get_id_for_print(lock->trx)));
@@ -2883,7 +3217,9 @@ lock_grant(
 		}
 	}
 
+
 	trx_mutex_exit(lock->trx);
+
 }
 
 /**
@@ -3127,12 +3463,12 @@ lock_rec_cancel(
 	ut_ad(lock_mutex_own());
 	ut_ad(lock_get_type_low(lock) == LOCK_REC);
 
-	/* Reset the bit (there can be only one set bit) in the lock bitmap */
-	lock_rec_reset_nth_bit(lock, lock_rec_find_set_bit(lock));
-
 	/* Reset the wait flag and the back pointer to lock in trx */
 
 	lock_reset_lock_and_trx_wait(lock);
+
+	/* Reset the bit (there can be only one set bit) in the lock bitmap */
+	lock_rec_reset_nth_bit(lock, lock_rec_find_set_bit(lock));
 
 	/* The following function releases the trx from lock wait */
 
@@ -3185,90 +3521,139 @@ swap_grant(
 	ulint page_no = released_lock->un_member.rec_lock.page_no;
 	ulint rec_fold = lock_rec_fold(space, page_no);
 
-    local_update(lock_hash, space, page_no, heap_no);
+
+    RT::getMutex(space, page_no, heap_no);
+
+    // local_update(lock_hash, space, page_no, heap_no);
+    // local_update(space, page_no, heap_no);
 
     // fprintf(stderr, "local update\n");
 
-    // RT::getMutex();
-    // auto queues = get_queue(lock_hash, space, page_no, heap_no);
-    // std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
-    // std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
-    // auto non_rw = queues.first;
-    // auto granted = queues.second;
-
     auto queues = get_queue(lock_hash, space, page_no, heap_no);
-    auto queue = std::get<0>(queues);
-    auto read = std::get<1>(queues);
+    std::vector<lock_t*>& queue = get_wait_queue(space, page_no, heap_no);
+    std::vector<lock_t*>& read = get_read_queue(space, page_no, heap_no);
+
+    // auto queues = get_queue(lock_hash, space, page_no, heap_no);
+    // auto queue = std::get<0>(queues);
+    // auto read = std::get<1>(queues);
+    
     auto non_rw = std::get<2>(queues);
     auto granted = std::get<3>(queues);
 
     std::vector<lock_t*> new_granted;
-
-    // fprintf(stderr, "get queues\n");
-    // fprintf(stderr, "queue size = %d, read size = %d\n", queue.size(), read.size());
+    std::vector<trx_t*> granted_trx;
 
     if (!queue.empty()) {
-        for (auto lock : queue)
-        {
-            if (lock_get_mode(lock) == LOCK_S) {
-                long tot = 0;
-                for (auto read_lock : read) {
-                    tot += read_lock->trx->dep_size;
-                }
-                fprintf(stderr, "%ld(r) ", tot);
-            } else {
-                fprintf(stderr, "%ld ", lock->trx->dep_size);
-            }
-        }
-        fprintf(stderr, "\n");
+        // for (auto lock : queue)
+        // {
+        //     if (lock_get_mode(lock) == LOCK_S) {
+        //         long tot = 0;
+        //         fprintf(stderr, "[");
+        //         for (auto read_lock : read) {
+        //             tot += read_lock->trx->dep_size;
+        //             fprintf(stderr, "%ld ", read_lock->trx->finish_time);
+        //         }
+        //         fprintf(stderr, "](%ld) ", tot);
+        //     } else {
+        //         fprintf(stderr, "%ld(%ld) ", lock->trx->finish_time, lock->trx->dep_size);
+        //     }
+        // }
+        // fprintf(stderr, "\n");
+        
+        // fprintf(stderr, "queue: ");
+        // for (int i = 0; i < queue.size(); ++i) {
+        //     fprintf(stderr, "%p ", queue[i]);
+        // }
+        // fprintf(stderr, "\nread: ");
+        // for (int i = 0; i < read.size(); ++i) {
+        //     fprintf(stderr, "%d ", read[i]);
+        // }
+        // auto real_queue = std::get<0>(queues);
+        // auto real_read = std::get<1>(queues);
+        // fprintf(stderr, "\nqueue: ");
+        // for (int i = 0; i < real_queue.size(); ++i) {
+        //     fprintf(stderr, "%p ", queue[i]);
+        // }
+        // fprintf(stderr, "\nread: ");
+        // for (int i = 0; i < real_read.size(); ++i) {
+        //     fprintf(stderr, "%d ", read[i]);
+        // }
+        // fprintf(stderr, "\n\n");
+
         if (lock_get_mode(queue.front()) == LOCK_X) {
             lock_t* lock = queue.front();
-            fprintf(stderr, "%ld\n\n", lock->trx->dep_size);
+            // fprintf(stderr, "%ld\n\n", lock->trx->dep_size);
 	    	if (!lock_rec_has_to_wait_granted(lock, granted)) {
-	    		lock_grant(lock);
-	    		HASH_DELETE(lock_t, hash, lock_hash,
-	    								rec_fold, lock);
-	    		lock_rec_insert_to_head(lock_hash, lock, rec_fold);
-	    		new_granted.push_back(lock);
-                // queue.erase(queue.begin());
+                if (lock == NULL) {
+                    // fprintf(stderr, "lock == NULL\n");
+                    // fflush(stderr);
+                } else if (lock->trx == NULL) {
+                    // fprintf(stderr, "lock->trx == NULL");
+                    // fflush(stderr);
+                }
+                if (!lock_get_wait(lock)) {
+                    fprintf(stderr, "skip lock %p, since already granted somewhere\n", lock);
+                    fflush(stderr);
+                }
+                else {
+                    granted_trx.push_back(lock->trx);
+                    assert(lock->trx != released_lock->trx);
+	    		    lock_grant(lock);
+	    		    HASH_DELETE(lock_t, hash, lock_hash,
+	    		     						rec_fold, lock);
+	    		    lock_rec_insert_to_head(lock_hash, lock, rec_fold);
+	    		    // new_granted.push_back(lock);
+
+                    queue.erase(queue.begin());
+                }
             }
         } else if (lock_get_mode(queue.front()) == LOCK_S) {
-            long tot = 0;
-            for (auto read_lock : read) {
-                tot += read_lock->trx->dep_size;
-            }
-            fprintf(stderr, "%ld\n\n", tot);
+            // long tot = 0;
+            // for (auto read_lock : read) {
+            //     tot += read_lock->trx->dep_size;
+            // }
+            // fprintf(stderr, "%ld\n\n", tot);
             lock_t* first_lock = queue.front();
+            // fprintf(stderr, "%d wait\n", lock_rec_has_to_wait_granted(first_lock, granted));
             if (!lock_rec_has_to_wait_granted(first_lock, granted)) {
                 for (lock_t* lock : read) {
-	    	        lock_grant(lock);
+                    if (!lock_get_wait(lock)) {
+                        continue;
+                    }
+                    granted_trx.push_back(lock->trx);
+                    assert(lock->trx != released_lock->trx);
+                    lock_grant(lock);
 	    	        HASH_DELETE(lock_t, hash, lock_hash,
 	    	        							rec_fold, lock);
 	    	        lock_rec_insert_to_head(lock_hash, lock, rec_fold);
-	    	        new_granted.push_back(lock);
+	    	        // new_granted.push_back(lock);
                 }
-                // read.clear();
-                // queue.erase(queue.begin());
+                read.clear();
+                queue.erase(queue.begin());
             }
         }
     }
 
-    // RT::releaseMutex();
+    RT::releaseMutex(space, page_no, heap_no);
 
     for (lock_t* lock : non_rw) {
-		if (!lock_rec_has_to_wait_in_queue(lock)) {
+		if (!lock_rec_has_to_wait_in_queue(lock) && lock_get_wait(lock)) {
+            granted_trx.push_back(lock->trx);
 			lock_grant(lock);
 			HASH_DELETE(lock_t, hash, lock_hash,
 									rec_fold, lock);
 			lock_rec_insert_to_head(lock_hash, lock, rec_fold);
-			new_granted.push_back(lock);
+			// new_granted.push_back(lock);
 		}
 	}
 
-    for (lock_t* lock : new_granted) {
-        trx_t* trx = lock->trx;
+    // fprintf(stderr, "a%d\n", new_granted.size());
+    // for (lock_t* lock : new_granted) {
+    for (trx_t* trx : granted_trx) {
+        // trx_t* trx = lock->trx;
         // fprintf(stderr, "grant lock %p\n", lock);
         clock_gettime(CLOCK_REALTIME, &update_start);
+        // fprintf(stderr, "\t%p\n", trx);
         update_trx_finish_time(trx, 1, 0, 0, true);
         clock_gettime(CLOCK_REALTIME, &update_end);
         duration = (update_end.tv_sec - update_start.tv_sec) * 1E9 + (update_end.tv_nsec - update_start.tv_nsec);
@@ -3276,6 +3661,45 @@ swap_grant(
     }
 
     // fprintf(stderr, "end swap grant\n");
+ 
+    // queues = get_queue(lock_hash, space, page_no, heap_no);
+    // queue = std::get<0>(queues);
+    // read = std::get<1>(queues);
+
+
+
+    // if (!queue.empty()) {
+    //     for (auto lock : queue)
+    //     {
+    //         if (lock_get_mode(lock) == LOCK_S) {
+    //             long tot = 0;
+    //             fprintf(stderr, "[");
+    //             for (auto read_lock : read) {
+    //                 tot += read_lock->trx->dep_size;
+    //                 fprintf(stderr, "%ld ", read_lock->trx->finish_time);
+    //             }
+    //             fprintf(stderr, "](%ld) ", tot);
+    //         } else {
+    //             fprintf(stderr, "%ld(%ld) ", lock->trx->finish_time, lock->trx->dep_size);
+    //         }
+    //     }
+    //     fprintf(stderr, "\n\n");
+    // }
+
+	for (lock_t* lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
+			 lock != NULL;
+			 lock = lock_rec_get_next_on_page(lock)) {
+
+		if (lock_get_wait(lock)
+				&& !lock_rec_has_to_wait_in_queue(lock)) {
+
+			/* Grant the lock */
+			ut_ad(lock->trx != released_lock->trx);
+            remove_from_queue(lock, space, page_no, lock_rec_find_set_bit(lock));
+			lock_grant(lock);
+		}
+	}
+
 }
 
 static
@@ -3615,6 +4039,10 @@ lock_rec_dequeue_from_page(
 
 	UT_LIST_REMOVE(trx_lock->trx_locks, in_lock);
 
+    if (!lock_get_wait(in_lock)) {
+        remove_from_queue(in_lock, space, page_no, lock_rec_find_set_bit(in_lock));
+    }
+
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
 	MONITOR_DEC(MONITOR_NUM_RECLOCK);
 
@@ -3645,8 +4073,7 @@ lock_rec_dequeue_from_page(
 		 grant locks if there are no conflicting locks ahead. Stop at
 		 the first X lock that is waiting or has been granted. */
 
-		for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
-																								page_no);
+		for (lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
 				 lock != NULL;
 				 lock = lock_rec_get_next_on_page(lock)) {
 
@@ -3722,6 +4149,13 @@ dump_log()
         lu_time_file << lu_time[i] << std::endl;
     }
     lu_time_file.close();
+
+    std::ofstream insert_time_file("latency/insert_time");
+    for (size_t i = 0; i < insert_time.size(); ++i)
+    {
+        insert_time_file << insert_time[i] << std::endl;
+    }
+    insert_time_file.close();
 }
 
 /*************************************************************//**
@@ -3750,6 +4184,14 @@ lock_rec_discard(
 
 	HASH_DELETE(lock_t, hash, lock_hash_get(in_lock->type_mode),
 			    lock_rec_fold(space, page_no), in_lock);
+
+    if (lock_get_wait(in_lock) && lock_get_type_low(in_lock) == LOCK_S) {
+        fprintf(stderr, "lock_rec_discard\n");
+    }
+
+    if (lock_get_wait(in_lock)) {
+        remove_from_queue(in_lock, space, page_no, lock_rec_find_set_bit(in_lock));
+    }
 
 	UT_LIST_REMOVE(trx_lock->trx_locks, in_lock);
 
@@ -3982,11 +4424,11 @@ lock_rec_move_low(
 
 		const ulint	type_mode = lock->type_mode;
 
-		lock_rec_reset_nth_bit(lock, donator_heap_no);
-
 		if (type_mode & LOCK_WAIT) {
 			lock_reset_lock_and_trx_wait(lock);
 		}
+
+		lock_rec_reset_nth_bit(lock, donator_heap_no);
 
 		/* Note that we FIRST reset the bit, and then set the lock:
 		the function works also if donator == receiver */
@@ -4251,10 +4693,12 @@ lock_move_rec_list_end(
 			}
 
 			if (rec1_heap_no < lock->un_member.rec_lock.n_bits
-			    && lock_rec_reset_nth_bit(lock, rec1_heap_no)) {
+			    && lock_rec_get_nth_bit(lock, rec1_heap_no)) { // lock_rec_reset_nth_bit(lock, rec1_heap_no)) {
 				if (type_mode & LOCK_WAIT) {
 					lock_reset_lock_and_trx_wait(lock);
 				}
+
+                lock_rec_reset_nth_bit(lock, rec1_heap_no);
 
 				lock_rec_add_to_queue(
 					type_mode, new_block, rec2_heap_no,
@@ -4341,10 +4785,12 @@ lock_move_rec_list_start(
 			}
 
 			if (rec1_heap_no < lock->un_member.rec_lock.n_bits
-			    && lock_rec_reset_nth_bit(lock, rec1_heap_no)) {
+			    && lock_rec_get_nth_bit(lock, rec1_heap_no)) { // lock_rec_reset_nth_bit(lock, rec1_heap_no)) {
 				if (type_mode & LOCK_WAIT) {
 					lock_reset_lock_and_trx_wait(lock);
 				}
+
+                lock_rec_reset_nth_bit(lock, rec1_heap_no);
 
 				lock_rec_add_to_queue(
 					type_mode, new_block, rec2_heap_no,
@@ -4434,10 +4880,12 @@ lock_rtr_move_rec_list(
 			}
 
 			if (rec1_heap_no < lock->un_member.rec_lock.n_bits
-			    && lock_rec_reset_nth_bit(lock, rec1_heap_no)) {
+			    && lock_rec_get_nth_bit(lock, rec1_heap_no)) { // lock_rec_reset_nth_bit(lock, rec1_heap_no)) {
 				if (type_mode & LOCK_WAIT) {
 					lock_reset_lock_and_trx_wait(lock);
 				}
+
+                lock_rec_reset_nth_bit(lock, rec1_heap_no);
 
 				lock_rec_add_to_queue(
 					type_mode, new_block, rec2_heap_no,
@@ -5508,7 +5956,6 @@ lock_rec_unlock(
 
 released:
 	ut_a(!lock_get_wait(lock));
-	lock_rec_reset_nth_bit(lock, heap_no);
 
 	if (use_fcfs(trx)) {
 
@@ -5530,6 +5977,8 @@ released:
 	} else if (use_ldsf(trx)) {
 		ldsf_grant(lock_sys->rec_hash, lock, heap_no);
 	}
+
+	lock_rec_reset_nth_bit(lock, heap_no);
 
 	lock_mutex_exit();
 	trx_mutex_exit(trx);
@@ -8433,6 +8882,11 @@ DeadlockChecker::get_first_lock(ulint* heap_no) const
 	ut_ad(lock_mutex_own());
 
 	const lock_t*	lock = m_wait_lock;
+    if (!lock) {
+        fprintf(stderr, "get_first_lock\n");
+        fflush(stderr);
+    }
+    assert(lock);
 
 	if (lock_get_type_low(lock) == LOCK_REC) {
 		hash_table_t*	lock_hash;

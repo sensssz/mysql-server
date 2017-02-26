@@ -45,6 +45,12 @@ Created 5/7/1996 Heikki Tuuri
 #include <fstream>
 #include <vector>
 
+void 
+swap_thread_start();
+
+void
+swap_thread_stop();
+
 // Forward declaration
 class ReadView;
 
@@ -1106,14 +1112,27 @@ extern lock_sys_t*	lock_sys;
 /** Test if lock_sys->mutex is owned. */
 #define lock_mutex_own() (lock_sys->mutex.is_owned())
 
-/** Acquire the lock_sys->mutex. */
+/*
+// Acquire the lock_sys->mutex.
 #define lock_mutex_enter() do {			\
+    fprintf(stderr, "thread %lu is requesting lock mutex %p\n", (ulint) pthread_self(), &lock_sys); \
 	mutex_enter(&lock_sys->mutex);		\
+    fprintf(stderr, "thread %lu gets lock mutex\n", (ulint) pthread_self()); \
 } while (0)
 
-/** Release the lock_sys->mutex. */
+// Release the lock_sys->mutex.
 #define lock_mutex_exit() do {			\
 	lock_sys->mutex.exit();			\
+    fprintf(stderr, "thread %lu exits lock mutex\n", (ulint) pthread_self()); \
+} while (0)
+*/
+
+#define lock_mutex_enter() do {         \
+    mutex_enter(&lock_sys->mutex);      \
+} while (0)
+
+#define lock_mutex_exit() do {          \
+    lock_sys->mutex.exit();         \
 } while (0)
 
 /** Test if lock_sys->wait_mutex is owned. */

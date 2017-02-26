@@ -2622,6 +2622,7 @@ files_checked:
 	os_thread_create(buf_resize_thread, NULL, NULL);
 
 	srv_was_started = TRUE;
+    swap_thread_start();
 	return(DB_SUCCESS);
 }
 
@@ -2770,6 +2771,8 @@ innobase_shutdown_for_mysql(void)
 
 	srv_was_started = FALSE;
 	srv_start_has_been_called = FALSE;
+
+    swap_thread_stop();
 
 	dump_log();
 

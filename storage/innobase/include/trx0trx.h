@@ -1345,14 +1345,29 @@ struct commit_node_t{
 #define trx_mutex_own(t) mutex_own(&t->mutex)
 
 /** Acquire the trx->mutex. */
+/*
 #define trx_mutex_enter(t) do {			\
+    fprintf(stderr, "thread %lu is requesting trx mutex %p\n", (ulint) pthread_self(), &t->lock.wait_lock); \
 	mutex_enter(&t->mutex);			\
+    fprintf(stderr, "thread %lu gets trx mutex\n", (ulint) pthread_self()); \
+} while (0)
+*/
+
+#define trx_mutex_enter(t) do {         \
+    mutex_enter(&t->mutex);         \
 } while (0)
 
 /** Release the trx->mutex. */
+/*
 #define trx_mutex_exit(t) do {			\
 	mutex_exit(&t->mutex);			\
+    fprintf(stderr, "thread %lu exits trx mutex\n", (ulint) pthread_self()); \
 } while (0)
+*/
+
+#define trx_mutex_exit(t) do {          \
+    mutex_exit(&t->mutex);          \
+} while(0)
 
 /** Track if a transaction is executing inside InnoDB code. It acts
 like a gate between the Server and InnoDB.  */

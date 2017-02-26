@@ -149,19 +149,26 @@ do {\
 \
 	cell3333 = hash_get_nth_cell(TABLE, hash_calc_hash(FOLD, TABLE));\
 \
+    if (cell3333 == NULL) {\
+        break;\
+    }\
 	if (cell3333->node == DATA) {\
 		HASH_ASSERT_VALID(DATA->NAME);\
 		cell3333->node = DATA->NAME;\
 	} else {\
 		struct3333 = (TYPE*) cell3333->node;\
 \
+        if (struct3333 == NULL) {\
+            break;\
+        }\
 		while (struct3333->NAME != DATA) {\
 \
 			struct3333 = (TYPE*) struct3333->NAME;\
+            if (!struct3333) break;\
 			ut_a(struct3333);\
 		}\
 \
-		struct3333->NAME = DATA->NAME;\
+		if (struct3333) struct3333->NAME = DATA->NAME;\
 	}\
 	HASH_INVALIDATE(DATA, NAME);\
 } while (0)
