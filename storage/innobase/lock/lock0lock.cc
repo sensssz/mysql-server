@@ -62,6 +62,106 @@ using std::unordered_map;
 static std::vector<lock_t*>& get_wait_queue(ulint, ulint, ulint);
 static std::vector<lock_t*>& get_read_queue(ulint, ulint, ulint);
 
+class triplet
+{
+public:
+    bool operator!=(const triplet& x) const
+    {
+        return !(*this == x);
+    }
+    ulint space;
+    ulint page_no;
+    ulint heap_no;
+
+    triplet() :
+        space (ULINT_UNDEFINED),
+        page_no (ULINT_UNDEFINED),
+        heap_no (ULINT_UNDEFINED) { }
+    
+    triplet(ulint space, ulint page_no, ulint heap_no) :
+        space (space),
+        page_no (page_no),
+        heap_no (heap_no) { }
+
+    triplet(lock_t* lock) {
+        space = lock->un_member.rec_lock.space;
+        page_no = lock->un_member.rec_lock.page_no;
+        heap_no = lock_rec_find_set_bit(lock);
+    }
+
+    bool operator==(const triplet& k) const
+    {
+        return (k.space == space) && (k.page_no == page_no) && (k.heap_no == heap_no);
+    }
+};
+
+struct hash_triplet
+{
+    size_t operator()(const triplet& k) const 
+    {
+        size_t res = 17;
+        res = res * 31 + std::hash<ulint>()(k.space);
+        res = res * 31 + std::hash<ulint>()(k.page_no);
+        res = res * 31 + std::hash<ulint>()(k.heap_no);
+        return res;
+    };
+};
+
+class RT
+{
+public:
+     static 
+     unordered_map<triplet, long, hash_triplet>
+     release_time;
+ 
+    static
+    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
+    wait_queue;
+ 
+    static
+    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
+    read_queue;
+ 
+    // static
+    // unordered_map<triplet, LockMutex, hash_triplet>
+    // mutex;
+
+    static LockMutex mutex;
+    static LockMutex qMutex;
+ 
+    static
+    void 
+    getMutex(
+        ulint space,
+        ulint page_no,
+        ulint heap_no) { 
+ 
+        // mutex_enter(&mutex[triplet(space, page_no, heap_no)]); 
+        fprintf(stderr, "thread %lu: enter mutex %p\n", (ulint) pthread_self(), &mutex);
+        fflush(stderr);
+        mutex_enter(&mutex);
+    }
+ 
+    static
+    void
+    releaseMutex(
+        ulint space,
+        ulint page_no,
+        ulint heap_no) { 
+        
+        // mutex_exit(&mutex[triplet(space, page_no, heap_no)]); 
+        fprintf(stderr, "thread %lu: release mutex %p\n", (ulint) pthread_self(), &mutex);
+        fflush(stderr);
+        mutex_exit(&mutex);
+    }
+};
+
+unordered_map<triplet, long, hash_triplet> RT::release_time;
+unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::wait_queue;
+unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::read_queue;
+// unordered_map<triplet, LockMutex, hash_triplet> RT::mutex;
+LockMutex RT::mutex;
+LockMutex RT::qMutex;
 static
 void
 remove_from_queue(lock_t*, ulint, ulint, ulint);
@@ -476,6 +576,9 @@ lock_sys_create(
 	mutex_create(LATCH_ID_LOCK_SYS, &lock_sys->mutex);
 
 	mutex_create(LATCH_ID_LOCK_SYS_WAIT, &lock_sys->wait_mutex);
+
+    mutex_create(LATCH_ID_LOCK_SYS, &RT::mutex);
+    mutex_create(LATCH_ID_LOCK_SYS, &RT::qMutex);
 
 	lock_sys->timeout_event = os_event_create(0);
 
@@ -1649,39 +1752,6 @@ reset_trx_size_updated()
 	}
 }
 
-class triplet
-{
-public:
-    bool operator!=(const triplet& x) const
-    {
-        return !(*this == x);
-    }
-    ulint space;
-    ulint page_no;
-    ulint heap_no;
-
-    triplet() :
-        space (ULINT_UNDEFINED),
-        page_no (ULINT_UNDEFINED),
-        heap_no (ULINT_UNDEFINED) { }
-    
-    triplet(ulint space, ulint page_no, ulint heap_no) :
-        space (space),
-        page_no (page_no),
-        heap_no (heap_no) { }
-
-    triplet(lock_t* lock) {
-        space = lock->un_member.rec_lock.space;
-        page_no = lock->un_member.rec_lock.page_no;
-        heap_no = lock_rec_find_set_bit(lock);
-    }
-
-    bool operator==(const triplet& k) const
-    {
-        return (k.space == space) && (k.page_no == page_no) && (k.heap_no == heap_no);
-    }
-};
-
 triplet get_triplet(lock_t* lock) 
 {
 	ulint space = lock->un_member.rec_lock.space;
@@ -1689,75 +1759,6 @@ triplet get_triplet(lock_t* lock)
     ulint heap_no = lock_rec_find_set_bit(lock);
     return triplet(space, page_no, heap_no);
 }
-
-struct hash_triplet
-{
-    size_t operator()(const triplet& k) const 
-    {
-        size_t res = 17;
-        res = res * 31 + std::hash<ulint>()(k.space);
-        res = res * 31 + std::hash<ulint>()(k.page_no);
-        res = res * 31 + std::hash<ulint>()(k.heap_no);
-        return res;
-    };
-};
-
-class RT
-{
-public:
-     static 
-     unordered_map<triplet, long, hash_triplet>
-     release_time;
- 
-    static
-    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
-    wait_queue;
- 
-    static
-    unordered_map<triplet, std::vector<lock_t*>, hash_triplet>
-    read_queue;
- 
-    // static
-    // unordered_map<triplet, LockMutex, hash_triplet>
-    // mutex;
-
-    static LockMutex mutex;
-    static LockMutex qMutex;
- 
-    static
-    void 
-    getMutex(
-        ulint space,
-        ulint page_no,
-        ulint heap_no) { 
- 
-        // mutex_enter(&mutex[triplet(space, page_no, heap_no)]); 
-        fprintf(stderr, "thread %lu: enter mutex %p\n", (ulint) pthread_self(), &mutex);
-        fflush(stderr);
-        mutex_enter(&mutex);
-    }
- 
-    static
-    void
-    releaseMutex(
-        ulint space,
-        ulint page_no,
-        ulint heap_no) { 
-        
-        // mutex_exit(&mutex[triplet(space, page_no, heap_no)]); 
-        fprintf(stderr, "thread %lu: release mutex %p\n", (ulint) pthread_self(), &mutex);
-        fflush(stderr);
-        mutex_exit(&mutex);
-    }
-};
-
-unordered_map<triplet, long, hash_triplet> RT::release_time;
-unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::wait_queue;
-unordered_map<triplet, std::vector<lock_t*>, hash_triplet> RT::read_queue;
-// unordered_map<triplet, LockMutex, hash_triplet> RT::mutex;
-LockMutex RT::mutex;
-LockMutex RT::qMutex;
-
 
 static std::deque<triplet> process_queue;
 // pthread_mutex_t qMutex;
@@ -1955,6 +1956,15 @@ get_queue(
 		 lock = lock_rec_get_next(heap_no, lock)) {
         if (++cnt % 100 == 0) {
             fprintf(stderr, "thread %lu, cnt = %d\n", (ulint) pthread_self(), cnt);
+            fflush(stderr);
+            int i = 0;
+            lock_t* l;
+            for (l = lock_rec_get_first(hash, space, page_no, heap_no);
+                 i < 100;
+                 l = lock_rec_get_next(heap_no, l), ++i) {
+                fprintf(stderr, "%p->", l);
+            }
+            fprintf(stderr, "\n");
             fflush(stderr);
         }
         if (!lock_get_wait(lock)) {

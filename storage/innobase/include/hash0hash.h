@@ -150,6 +150,7 @@ do {\
 	cell3333 = hash_get_nth_cell(TABLE, hash_calc_hash(FOLD, TABLE));\
 \
     if (cell3333 == NULL) {\
+	    HASH_INVALIDATE(DATA, NAME);\
         break;\
     }\
 	if (cell3333->node == DATA) {\
@@ -159,6 +160,7 @@ do {\
 		struct3333 = (TYPE*) cell3333->node;\
 \
         if (struct3333 == NULL) {\
+	        HASH_INVALIDATE(DATA, NAME);\
             break;\
         }\
 		while (struct3333->NAME != DATA) {\
