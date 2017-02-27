@@ -111,21 +111,30 @@ do {\
 \
 	HASH_ASSERT_OWN(TABLE, FOLD)\
 \
-	(DATA)->NAME = NULL;\
-\
 	cell3333 = hash_get_nth_cell(TABLE, hash_calc_hash(FOLD, TABLE));\
 \
 	if (cell3333->node == NULL) {\
 		cell3333->node = DATA;\
-	} else {\
+        (DATA)->NAME = NULL;\
+	} else if (cell3333->node == DATA) {\
+        break;\
+    } else {\
 		struct3333 = (TYPE*) cell3333->node;\
 \
 		while (struct3333->NAME != NULL) {\
 \
+            if (struct3333->NAME == DATA) {\
+                break;\
+            }\
 			struct3333 = (TYPE*) struct3333->NAME;\
 		}\
 \
-		struct3333->NAME = DATA;\
+        if (struct3333->NAME == DATA) {\
+            break;\
+        } else {\
+		    struct3333->NAME = DATA;\
+            (DATA)->NAME = NULL;\
+        }\
 	}\
 } while (0)
 
