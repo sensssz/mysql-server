@@ -62,11 +62,8 @@ using std::unordered_map;
 static std::vector<lock_t*>& get_wait_queue(ulint, ulint, ulint);
 static std::vector<lock_t*>& get_read_queue(ulint, ulint, ulint);
 
-
-
-
-
-
+// static pthread_mutex_t qMutex;
+// static pthread_cond_t qCond;
 
 class triplet
 {
@@ -153,8 +150,9 @@ public:
         }
         wait_queue[t];
         read_queue[t];
+        LockMutex& l = mutex_queues[t];
         mutex_exit(&mutex);
-        mutex_enter(&mutex_queues[t]);
+        mutex_enter(&l);
     }
  
     static
@@ -593,6 +591,8 @@ lock_sys_create(
 
 	mutex_create(LATCH_ID_LOCK_SYS_WAIT, &lock_sys->wait_mutex);
 
+    // pthread_mutex_init(&qMutex, NULL);
+    // pthread_cond_init(&qCond, NULL);
     mutex_create(LATCH_ID_LOCK_SYS, &RT::mutex);
     mutex_create(LATCH_ID_LOCK_SYS, &RT::qMutex);
 
@@ -1777,9 +1777,6 @@ triplet get_triplet(lock_t* lock)
 }
 
 static std::deque<triplet> process_queue;
-// pthread_mutex_t qMutex;
-// pthread_cond_t qCond;
-// LockMutex qMutex;
 
 static
 void
@@ -1794,6 +1791,7 @@ void*
 handle_lock_sys_change_events(
     void* args)
 {
+    return NULL;
     // fprintf(stderr, "Swap thread : %lu\n", (ulint) pthread_self());
     // fflush(stderr);
     while (!thread_shutdown) {
@@ -1816,7 +1814,7 @@ handle_lock_sys_change_events(
         }
         triplet event = process_queue.front();
         process_queue.pop_front();
-        //pthread_mutex_unlock(&qMutex);
+        // pthread_mutex_unlock(&qMutex);
         mutex_exit(&RT::qMutex);
         // fprintf(stderr, "swap thread: get triplet [%lu, %lu, %lu]\n", event.space, event.page_no, event.heap_no);
         // fflush(stderr);
@@ -1906,7 +1904,10 @@ get_wait_queue(
     ulint page_no,
     ulint heap_no)
 {
-    return RT::wait_queue[triplet(space, page_no, heap_no)];
+    mutex_enter(&RT::mutex);
+    std::vector<lock_t*>& v = RT::wait_queue[triplet(space, page_no, heap_no)];
+    mutex_exit(&RT::mutex);
+    return v;
 }
 
 static
@@ -1916,6 +1917,9 @@ get_read_queue(
     ulint page_no,
     ulint heap_no)
 {
+    mutex_enter(&RT::mutex);
+    std::vector<lock_t*>& v = RT::read_queue[triplet(space, page_no, heap_no)];
+    mutex_exit(&RT::mutex);
     return RT::read_queue[triplet(space, page_no, heap_no)];
 }
 
@@ -2216,20 +2220,12 @@ update_lock_release_time(
                         continue;
                     }
                     inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc, depth + 1);
-                    // else {
-                    //     fprintf(stderr, "???\n");
-                    //     fflush(stderr);
-                    // }
                 }
             } else {
                 if (!lock_get_wait(lock)) {
                     continue;
                 }
                 inc = update_trx_finish_time(lock->trx, new_release_time + i + 1, inc, depth + 1);
-                // else {
-                //     fprintf(stderr, "???\n");
-                //     fflush(stderr);
-                // }
             }
         }
     }
@@ -2251,8 +2247,8 @@ local_update(
     timespec    update_end;
     ulint       duration;
 
-    fprintf(stderr, "thread %lu: in local update\n", (ulint) pthread_self());
-    fflush(stderr);
+    // fprintf(stderr, "thread %lu: in local update\n", (ulint) pthread_self());
+    // fflush(stderr);
 
     clock_gettime(CLOCK_REALTIME, &lu_start);
 
@@ -2378,7 +2374,7 @@ insert_to_queue(
 
         // local_update(hash, space, page_no, heap_no);
         // local_update(space, page_no, heap_no);
-        submit_lock_sys_change(space, page_no, heap_no);
+        // submit_lock_sys_change(space, page_no, heap_no);
 
         RT::releaseMutex(space, page_no, heap_no);
     }
@@ -4530,8 +4526,8 @@ lock_move_reorganize_page(
 		return;
 	}
 
-    fprintf(stderr, "reorganize A\n");
-    fflush(stderr);
+    // fprintf(stderr, "reorganize A\n");
+    // fflush(stderr);
 
 	heap = mem_heap_create(256);
 
@@ -4542,8 +4538,8 @@ lock_move_reorganize_page(
 	UT_LIST_INIT(old_locks, &lock_t::trx_locks);
 
 	do {
-    fprintf(stderr, "reorganize B\n");
-    fflush(stderr);
+    // fprintf(stderr, "reorganize B\n");
+    // fflush(stderr);
 
 		/* Make a copy of the lock */
 		lock_t*	old_lock = lock_rec_copy(lock, heap);
@@ -4561,8 +4557,8 @@ lock_move_reorganize_page(
 		lock = lock_rec_get_next_on_page(lock);
 	} while (lock != NULL);
 
-    fprintf(stderr, "reorganize C\n");
-    fflush(stderr);
+    // fprintf(stderr, "reorganize C\n");
+    // fflush(stderr);
 
 
 	comp = page_is_comp(block->frame);
@@ -4573,8 +4569,8 @@ lock_move_reorganize_page(
 	DBUG_EXECUTE_IF("do_lock_reverse_page_reorganize",
 			UT_LIST_REVERSE(old_locks););
 
-    fprintf(stderr, "reorganize D\n");
-    fflush(stderr);
+    // fprintf(stderr, "reorganize D\n");
+    // fflush(stderr);
 
 	for (lock = UT_LIST_GET_FIRST(old_locks); lock;
 	     lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
