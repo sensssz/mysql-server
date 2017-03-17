@@ -999,6 +999,13 @@ struct trx_t {
 					to check for the view limit for
 					transactions that are committing */
 
+	/* Fields protected by the lock_sys->mutex. */
+	long		dep_size;	  /*!< Dependency size of this trx. */
+	bool		size_updated; /*!< Marks whether the dep size has
+					already been updated in the dep size update process. */
+	long		seq;		  /*!< Sequence number of this trx in
+					the lock list. Used during VATS scheduling. */
+
 	trx_lock_t	lock;		/*!< Information about the transaction
 					locks and state. Protected by
 					trx->mutex or lock_sys->mutex
@@ -1089,9 +1096,6 @@ struct trx_t {
 
 	time_t		start_time;	/*!< time the state last time became
 					TRX_STATE_ACTIVE */
-	long			dep_size;
-	bool			size_updated;
-	long			seq;
 	lsn_t		commit_lsn;	/*!< lsn at the time of the commit */
 	table_id_t	table_id;	/*!< Table to drop iff dict_operation
 					== TRX_DICT_OP_TABLE, or 0. */
