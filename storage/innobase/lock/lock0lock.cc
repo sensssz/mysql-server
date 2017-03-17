@@ -2787,8 +2787,7 @@ lock_rec_dequeue_from_page(
 		 grant locks if there are no conflicting locks ahead. Stop at
 		 the first X lock that is waiting or has been granted. */
 
-		for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
-																								page_no);
+		for (lock = lock_rec_get_first_on_page_addr(lock_hash, space, page_no);
 				 lock != NULL;
 				 lock = lock_rec_get_next_on_page(lock)) {
 
