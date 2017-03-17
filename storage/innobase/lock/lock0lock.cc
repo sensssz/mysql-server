@@ -1581,26 +1581,10 @@ lock_rec_insert_to_head(
 
 static
 void
-reset_trx_size_updated()
-{
-	trx_t *trx;
-	for (trx = UT_LIST_GET_FIRST(trx_sys->rw_trx_list);
-		 trx != NULL;
-		 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
-		trx->size_updated = false;
-	}
-	for (trx = UT_LIST_GET_FIRST(trx_sys->mysql_trx_list);
-		 trx != NULL;
-		 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
-		trx->size_updated = false;
-	}
-}
-
-static
-void
 update_dep_size(
     trx_t  *trx,
     long    size_delta,
+	std::set<trx_t *> &updated_trx,
     long    depth=1)
 {
 	ulint   space;
@@ -1616,15 +1600,13 @@ update_dep_size(
 
 	trx->size_updated = true;
 	trx->dep_size += size_delta;
+	updated_trx.insert(trx);
 	if (trx->dep_size < 0) {
 		trx->dep_size = 0;
 	}
 	wait_lock = trx->lock.wait_lock;
 	if (trx->state != TRX_STATE_ACTIVE
 		|| wait_lock == NULL) {
-		if (depth == 1) {
-			reset_trx_size_updated();
-		}
 		return;
 	}
 
@@ -1637,11 +1619,23 @@ update_dep_size(
 		 lock = lock_rec_get_next(heap_no, lock)) {
 		if (!lock_get_wait(lock)
 			&& trx != lock->trx) {
-			update_dep_size(lock->trx, size_delta, depth + 1);
+			update_dep_size(lock->trx, size_delta, updated_trx, depth + 1);
 		}
 	}
-	if (depth == 1) {
-		reset_trx_size_updated();
+}
+
+static
+void
+update_dep_size(
+    trx_t  *trx,
+    long    size_delta)
+{
+	std::set<trx_t *> updated_trx;
+	std::set<trx_t *>::iterator it;
+
+	update_dep_size(trx, size_delta, updated_trx);
+	for (it = updated_trx.begin(); it != updated_trx.end(); ++it) {
+		(*it)->size_updated = false;
 	}
 }
 
