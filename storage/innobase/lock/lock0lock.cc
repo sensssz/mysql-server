@@ -50,7 +50,30 @@ Created 5/7/1996 Heikki Tuuri
 #include "row0mysql.h"
 #include "pars0pars.h"
 
+#include <fstream>
+#include <algorithm>
+#include <vector>
 #include <set>
+
+std::vector<ulint> exec_time;
+std::vector<ulint> wait_len;
+
+void dump_log()
+{
+    std::ofstream overhead_file("latency/scheduling_overhead");
+    for (size_t i = 0; i < exec_time.size(); ++i)
+    {
+        overhead_file << exec_time[i] << std::endl;
+    }
+    overhead_file.close();
+
+    std::ofstream qlen_file("latency/tot_len");
+    for (size_t i = 0; i < wait_len.size(); ++i)
+    {
+        qlen_file << wait_len[i] << std::endl;
+    }
+    qlen_file.close();
+}
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
@@ -2708,6 +2731,11 @@ lock_rec_dequeue_from_page(
 	lock_t*		lock;
 	trx_lock_t*	trx_lock;
 	hash_table_t*	lock_hash;
+    timespec func_start;
+    timespec func_end;
+
+    clock_gettime(CLOCK_REALTIME, &func_start);
+    
 
 	ut_ad(lock_mutex_own());
 	ut_ad(lock_get_type_low(in_lock) == LOCK_REC);
@@ -2753,8 +2781,23 @@ lock_rec_dequeue_from_page(
 			}
 		}
 	} else {
+        ulint x = 0;
+        for (lock = lock_rec_get_first_on_page_addr(lock_hash, space,
+							    page_no);
+		     lock != NULL;
+		     lock = lock_rec_get_next_on_page(lock)) {
+
+			if (lock_get_wait(lock)){
+                ++x;
+			}
+		}
+        wait_len.push_back(x);
 		lock_grant_and_move_on_page(lock_hash, space, page_no);
 	}
+
+    clock_gettime(CLOCK_REALTIME, &func_end);
+    ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+    exec_time.push_back(duration);
 }
 
 /*************************************************************//**
