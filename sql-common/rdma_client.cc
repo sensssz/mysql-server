@@ -1,9 +1,30 @@
+#include "rdma_communicator.h"
 #include "rdma_client.h"
 
 #include <netdb.h>
 #include <unistd.h>
 
 const int kTimeoutInMs = 500; /* ms */
+
+class RdmaClient : public RdmaCommunicator {
+public:
+  RdmaClient(std::string hostname, int port);
+  StatusOr<Context *> Connect();
+  char *GetRemoteBuffer();
+  Status SendToServer(size_t size);
+  void Disconnect();
+  Status CancelOustanding();
+
+protected:
+  virtual Status OnAddressResolved(struct rdma_cm_id *id) override;
+  virtual Status OnRouteResolved(struct rdma_cm_id *id) override;
+  virtual Status OnConnectRequest(struct rdma_cm_id *id) override;
+
+private:
+  int port_;
+  std::string hostname_;
+  Context *context_;
+};
 
 RdmaClient::RdmaClient(std::string hostname, int port) :
     port_(port), hostname_(hostname), context_(nullptr) {}
@@ -97,4 +118,25 @@ Status RdmaClient::OnRouteResolved(struct rdma_cm_id *id) {
 Status RdmaClient::OnConnectRequest(struct rdma_cm_id *id) {
   // For server only
   return Status::Ok();
+}
+
+Context *RdmaConnect(const char *host, int port) {
+  RdmaClient client(std::string(host), port);
+  auto status_or_context = client.Connect();
+  if (!status_or_context.ok()) {
+    return nullptr;
+  }
+  return *status_or_context.Take();
+}
+
+void RdmaDisconnect(Context *context) {
+  rdma_disconnect(context->id);
+  struct rdma_cm_event *event = nullptr;
+  if (rdma_get_cm_event(context->event_channel, &event) != 0) {
+    return;
+  }
+  struct rdma_cm_event event_copy;
+  memcpy(&event_copy, event, sizeof(*event));
+  rdma_ack_cm_event(event);
+  DestroyContext(context);
 }

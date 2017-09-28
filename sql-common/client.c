@@ -4385,14 +4385,13 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
     }
 
     DBUG_PRINT("info",("Server name: '%s'.  TCP sock: %d", host, port));
-    RdmaClient client(std::string(host), port);
-    StatusOr<Context *> status_or_context = client.Connect();
-    if (!status_or_context.ok()) {
+    Context *context = RdmaConnect(host, port);
+    if (context == NULL) {
       DBUG_PRINT("info", ("Error connecting to the server"));
       goto error;
     }
-    if (!(net->vio = rdma_vio_new(status_or_context.Take()))) {
-      client.Disconnect();
+    if (!(net->vio = rdma_vio_new(context))) {
+      RdmaDisconnect(context);
       goto error;
     }
 

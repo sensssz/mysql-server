@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <config_static.h>
 #include "utilities/engine_loader.h"
 #include <memcached/types.h>
 

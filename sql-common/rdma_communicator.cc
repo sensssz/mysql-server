@@ -113,6 +113,7 @@ Status RdmaCommunicator::PostSend(Context *context, size_t size) {
 Status RdmaCommunicator::InitContext(Context *context, struct rdma_cm_id *id) {
   context->connected = false;
   context->id = id;
+  context->event_channel = event_channel_;
   context->device_context = id->verbs;
   ERROR_IF_ZERO(context->protection_domain = ibv_alloc_pd(context->device_context));
   ERROR_IF_ZERO(context->completion_channel = ibv_create_comp_channel(context->device_context));

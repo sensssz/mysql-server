@@ -21,31 +21,17 @@ extern void initialize_sockets(void);
 #define initialize_sockets()
 #endif
 
-#ifdef HAVE_DLFCN_H
 #include <dlfcn.h>
-#endif
 
-#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
-#endif
 
 #ifdef HAVE_LINK_H
 #include <link.h>
 #endif
 
-#ifdef HAVE_STDBOOL_H
 #include <stdbool.h>
-#else
-#ifndef bool
-#define bool char
-#define false 0
-#define true 1
-#endif
-#endif
 
-#ifdef HAVE_INTTYPES_H
 #include <inttypes.h>
-#endif
 
 #ifdef HAVE_SYSEXITS_H
 #include <sysexits.h>
@@ -59,45 +45,20 @@ extern void initialize_sockets(void);
 #include <sys/wait.h>
 #endif
 
-#ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
-#endif
-
-#ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
-#endif
-
-#ifdef HAVE_NETDB_H
 #include <netdb.h>
-#endif
-
-#ifdef HAVE_UNISTD_H
 #include <unistd.h>
-#endif
-
-#ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
-#endif
-
-#ifdef HAVE_SYS_UN_H
 #include <sys/un.h>
-#endif
 
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
 
-#ifdef HAVE_SYS_UIO_H
 #include <sys/uio.h>
-#endif
-
-#ifdef HAVE_NETINET_TCP_H
 #include <netinet/tcp.h>
-#endif
-
-#ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
-#endif
 
 
 /* some POSIX systems need the following definition

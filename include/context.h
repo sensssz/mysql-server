@@ -13,6 +13,7 @@ extern "C" {
 
 typedef struct Context {
   struct rdma_cm_id *id;
+  struct rdma_event_channel *event_channel;
 
   struct ibv_qp *queue_pair;
   struct ibv_context *device_context;

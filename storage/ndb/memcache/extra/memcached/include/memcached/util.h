@@ -14,6 +14,8 @@
 #include <memcached/visibility.h>
 #ifdef __cplusplus
 extern "C" {
+#else
+#include <config_static.h>
 #endif
 
 MEMCACHED_PUBLIC_API bool safe_strtoull(const char *str, uint64_t *out);
