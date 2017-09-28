@@ -264,6 +264,7 @@ SET(SQL_SOURCE
   ../sql-common/pack.c
   ../sql-common/client_authentication.cc
   ../sql-common/sql_string.cc
+  ../sql-common/rdma_client.cc
   ../sql-common/rdma_communicator.cc
   ../sql-common/rdma_server.cc
   ../sql-common/status.cc

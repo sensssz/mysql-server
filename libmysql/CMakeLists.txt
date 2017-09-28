@@ -187,6 +187,9 @@ SET(CLIENT_SOURCES
   ../sql-common/client_authentication.cc
   ../sql/net_serv.cc
   ../sql-common/pack.c
+  ../sql-common/rdma_client.cc
+  ../sql-common/rdma_communicator.cc
+  ../sql-common/status.cc
   ../sql/auth/password.c
 )
 

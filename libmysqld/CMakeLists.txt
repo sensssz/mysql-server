@@ -1,14 +1,14 @@
 # Copyright (c) 2006, 2016, Oracle and/or its affiliates. All rights reserved.
-# 
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; version 2 of the License.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
@@ -17,7 +17,7 @@ ADD_DEFINITIONS(-DMYSQL_SERVER -DEMBEDDED_LIBRARY
  ${SSL_DEFINES})
 
 INCLUDE_DIRECTORIES(
-  ${CMAKE_SOURCE_DIR}/include 
+  ${CMAKE_SOURCE_DIR}/include
   ${CMAKE_SOURCE_DIR}/libmysql
   ${CMAKE_SOURCE_DIR}/libbinlogevents/include
   ${CMAKE_SOURCE_DIR}/libmysqld
@@ -37,7 +37,7 @@ INCLUDE_DIRECTORIES(
 # We should generate these separately for libmysqld to avoid
 # compiling them for libmysqld while they are generated for sql.
 SET(GEN_YACC_SOURCES
-  ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.h 
+  ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.h
   ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.cc
   ${CMAKE_CURRENT_BINARY_DIR}/sql_hints.yy.h
   ${CMAKE_CURRENT_BINARY_DIR}/sql_hints.yy.cc
@@ -64,7 +64,7 @@ ENDFOREACH()
 
 SET(SQL_EMBEDDED_SOURCES
   emb_qcache.cc
-  lib_sql.cc 
+  lib_sql.cc
   libmysqld.c
   ${GEN_SOURCES}
   ${GEN_YACC_SOURCES}
@@ -74,9 +74,12 @@ SET(SQL_EMBEDDED_SOURCES
   ../libmysql/libmysql.c
   ../sql-common/client.c
   ../sql-common/client_plugin.c
-  ../sql-common/my_time.c 
+  ../sql-common/my_time.c
   ../sql-common/my_user.c
   ../sql-common/pack.c
+  ../sql-common/rdma_client.cc
+  ../sql-common/rdma_communicator.cc
+  ../sql-common/status.cc
   ../sql-common/sql_string.cc
   ../libbinlogevents/src/statement_events.cpp
   ../libbinlogevents/src/control_events.cpp
@@ -85,7 +88,7 @@ SET(SQL_EMBEDDED_SOURCES
   ../libbinlogevents/src/binlog_event.cpp
   ../libbinlogevents/src/binary_log_funcs.cpp
   ../libbinlogevents/src/uuid.cpp
-  ../sql/binlog.cc 
+  ../sql/binlog.cc
   ../sql/event_parse_data.cc
   ../sql/log_event.cc
   ../sql/mysqld_thd_manager.cc
@@ -133,17 +136,17 @@ ADD_COMPILE_FLAGS(
 # Fixes "C1128: number of sections exceeded object file format limit" in MSVC /MD
 # The flag /bigobj is not added if the build is not /MD
 IF(WIN32 AND CMAKE_SIZEOF_VOID_P MATCHES 8)
-  FOREACH(flag 
-     CMAKE_C_FLAGS_RELEASE    CMAKE_C_FLAGS_RELWITHDEBINFO 
-     CMAKE_C_FLAGS_DEBUG      CMAKE_C_FLAGS_DEBUG_INIT 
+  FOREACH(flag
+     CMAKE_C_FLAGS_RELEASE    CMAKE_C_FLAGS_RELWITHDEBINFO
+     CMAKE_C_FLAGS_DEBUG      CMAKE_C_FLAGS_DEBUG_INIT
      CMAKE_CXX_FLAGS_RELEASE  CMAKE_CXX_FLAGS_RELWITHDEBINFO
      CMAKE_CXX_FLAGS_DEBUG    CMAKE_CXX_FLAGS_DEBUG_INIT)
-    
+
      STRING(FIND ${${flag}} "/MD" POS)
      IF(NOT (${POS} MATCHES "-1"))
        ADD_COMPILE_FLAGS(../sql/item_geofunc_setops.cc COMPILE_FLAGS "/bigobj")
        BREAK()
-     ENDIF()  
+     ENDIF()
   ENDFOREACH()
 ENDIF()
 
@@ -177,12 +180,12 @@ IF(HAVE_MISLEADING_INDENTATION)
     ../sql/item_geofunc_internal.cc
     ../sql/item_geofunc_relchecks.cc
     ../sql/item_geofunc_relchecks_bgwrap.cc
-    ../sql/item_geofunc_setops.cc    
+    ../sql/item_geofunc_setops.cc
     COMPILE_FLAGS "-Wno-misleading-indentation")
 ENDIF()
 
-# Handle out-of-source build from source package with possibly broken 
-# bison. Copy bison output to from source to build directory, if not already 
+# Handle out-of-source build from source package with possibly broken
+# bison. Copy bison output to from source to build directory, if not already
 # there
 INCLUDE(${CMAKE_SOURCE_DIR}/cmake/bison.cmake)
 COPY_BISON_OUTPUT(
@@ -200,7 +203,7 @@ COPY_BISON_OUTPUT(
 )
 
 RUN_BISON(
-  ${CMAKE_SOURCE_DIR}/sql/sql_yacc.yy 
+  ${CMAKE_SOURCE_DIR}/sql/sql_yacc.yy
   ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.cc
   ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.h
   MYSQL
@@ -244,7 +247,7 @@ ELSE()
 ENDIF()
 
 
-SET(LIBS 
+SET(LIBS
   dbug strings regex mysys mysys_ssl vio
   ${ZLIB_LIBRARY} ${SSL_LIBRARIES}
   ${LIBCRYPT} ${LIBDL}
@@ -264,10 +267,10 @@ FOREACH(LIB ${LIBS})
   ENDIF()
 ENDFOREACH()
 
-MERGE_LIBRARIES(mysqlserver STATIC ${EMBEDDED_LIBS} 
+MERGE_LIBRARIES(mysqlserver STATIC ${EMBEDDED_LIBS}
   OUTPUT_NAME ${MYSQLSERVER_OUTPUT_NAME} COMPONENT Embedded)
 
-# Visual Studio users need debug  static library 
+# Visual Studio users need debug  static library
 IF(MSVC)
  INSTALL_DEBUG_TARGET(mysqlserver DESTINATION ${INSTALL_LIBDIR}/debug)
 ENDIF()
