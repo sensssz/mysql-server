@@ -21,6 +21,7 @@
 */
 
 #include "vio_priv.h"
+#include "vio_rdma.h"
 
 #ifdef HAVE_OPENSSL
 PSI_memory_key key_memory_vio_ssl_fd;
@@ -50,8 +51,6 @@ void init_vio_psi_keys()
 }
 #endif
 
-#ifdef _WIN32
-
 /**
   Stub io_wait method that defaults to indicate that
   requested I/O event is ready.
@@ -71,8 +70,6 @@ static int no_io_wait(Vio *vio MY_ATTRIBUTE((unused)),
 {
   return 1;
 }
-
-#endif
 
 static my_bool has_no_data(Vio *vio MY_ATTRIBUTE((unused)))
 {
@@ -99,6 +96,22 @@ static void vio_init(Vio *vio, enum enum_vio_type type,
       !(vio->read_buffer= (char*)my_malloc(key_memory_vio_read_buffer,
                                            VIO_READ_BUFFER_SIZE, MYF(MY_WME))))
     flags&= ~VIO_BUFFERED_READ;
+  if (type == VIO_TYPE_RDMA) {
+    vio->viodelete	    = vio_delete;
+    vio->vioerrno	      = vio_errno;
+    vio->read           = vio_read_rdma;
+    vio->write          = vio_write_rdma;
+    vio->fastsend	      = vio_fastsend;
+    vio->viokeepalive	  = vio_keepalive;
+    vio->should_retry	  = vio_should_retry;
+    vio->was_timeout    = vio_was_timeout;
+    vio->vioshutdown	  = vio_shutdown_rdma;
+    vio->peer_addr	    = vio_peer_addr;
+    vio->io_wait        = no_io_wait;
+    vio->is_connected   = vio_is_connected_rdma;
+    vio->has_data       = has_data_rdma;
+    DBUG_VOID_RETURN;
+  }
 #ifdef _WIN32
   if (type == VIO_TYPE_NAMEDPIPE)
   {
@@ -262,6 +275,18 @@ my_bool vio_reset(Vio* vio, enum enum_vio_type type,
   DBUG_RETURN(MY_TEST(ret));
 }
 
+Vio *rdma_vio_new(Context *context) {
+  Vio *vio;
+  DBUG_ENTER("rdma_vio_new");
+  if ((vio = (Vio*) my_malloc(key_memory_vio,
+                              sizeof(Vio), MYF(MY_WME))))
+  {
+    vio_init(vio, VIO_TYPE_RDMA, 0, ~VIO_LOCALHOST);
+    vio->context = context;
+    my_stpcpy(vio->desc, "rdma");
+  }
+  DBUG_RETURN(vio);
+}
 
 /* Create a new VIO for socket or TCP/IP connection. */
 
@@ -437,7 +462,8 @@ static const vio_string vio_type_names[] =
   { C_STRING_WITH_LEN("SSL/TLS") },
   { C_STRING_WITH_LEN("Shared Memory") },
   { C_STRING_WITH_LEN("Internal") },
-  { C_STRING_WITH_LEN("Plugin") }
+  { C_STRING_WITH_LEN("Plugin") },
+  { C_STRING_WITH_LEN("RDMA") },
 };
 
 void get_vio_type_name(enum enum_vio_type vio_type, const char ** str, int * len)
@@ -456,4 +482,3 @@ void get_vio_type_name(enum enum_vio_type vio_type, const char ** str, int * len
   *len= vio_type_names[index].m_len;
   return;
 }
-

@@ -25,6 +25,7 @@
 #include <mysql/psi/psi.h>
 #include <pfs_socket_provider.h>
 #include <mysql/psi/mysql_socket.h>
+#include "context.h"
 
 /* Simple vio interface in C;  The functions are implemented in violite.c */
 
@@ -75,12 +76,14 @@ enum enum_vio_type
   */
   VIO_TYPE_PLUGIN= 7,
 
+  VIO_TYPE_RDMA = 8,
+
   FIRST_VIO_TYPE= VIO_TYPE_TCPIP,
   /*
     If a new type is added, please update LAST_VIO_TYPE. In addition, please
     change get_vio_type_name() in vio/vio.c to return correct name for it.
   */
-  LAST_VIO_TYPE= VIO_TYPE_PLUGIN
+  LAST_VIO_TYPE= VIO_TYPE_RDMA
 };
 
 /**
@@ -108,6 +111,7 @@ enum enum_vio_io_event
 
 Vio* vio_new(my_socket sd, enum enum_vio_type type, uint flags);
 Vio*  mysql_socket_vio_new(MYSQL_SOCKET mysql_socket, enum enum_vio_type type, uint flags);
+Vio *rdma_vio_new(Context *context);
 #ifdef _WIN32
 Vio* vio_new_win32pipe(HANDLE hPipe);
 Vio* vio_new_win32shared_memory(HANDLE handle_file_map,
@@ -195,8 +199,8 @@ typedef my_socket YASSL_SOCKET_T;
 #ifndef EMBEDDED_LIBRARY
 enum enum_ssl_init_error
 {
-  SSL_INITERR_NOERROR= 0, SSL_INITERR_CERT, SSL_INITERR_KEY, 
-  SSL_INITERR_NOMATCH, SSL_INITERR_BAD_PATHS, SSL_INITERR_CIPHERS, 
+  SSL_INITERR_NOERROR= 0, SSL_INITERR_CERT, SSL_INITERR_KEY,
+  SSL_INITERR_NOMATCH, SSL_INITERR_BAD_PATHS, SSL_INITERR_CIPHERS,
   SSL_INITERR_MEMFAIL, SSL_INITERR_NO_USABLE_CTX, SSL_INITERR_DHFAIL,
   SSL_TLS_VERSION_INVALID, SSL_INITERR_LASTERR
 };
@@ -285,15 +289,15 @@ struct st_vio
   char                  *read_end;      /* end of unfetched data */
   int                   read_timeout;   /* Timeout value (ms) for read ops. */
   int                   write_timeout;  /* Timeout value (ms) for write ops. */
-  
-  /* 
+
+  /*
      VIO vtable interface to be implemented by VIO's like SSL, Socket,
      Named Pipe, etc.
   */
-  
-  /* 
-     viodelete is responsible for cleaning up the VIO object by freeing 
-     internal buffers, closing descriptors, handles. 
+
+  /*
+     viodelete is responsible for cleaning up the VIO object by freeing
+     internal buffers, closing descriptors, handles.
   */
   void    (*viodelete)(Vio*);
   int     (*vioerrno)(Vio*);
@@ -306,8 +310,8 @@ struct st_vio
   void    (*in_addr)(Vio*, struct sockaddr_storage*);
   my_bool (*should_retry)(Vio*);
   my_bool (*was_timeout)(Vio*);
-  /* 
-     vioshutdown is resposnible to shutdown/close the channel, so that no 
+  /*
+     vioshutdown is resposnible to shutdown/close the channel, so that no
      further communications can take place, however any related buffers,
      descriptors, handles can remain valid after a shutdown.
   */
@@ -316,6 +320,8 @@ struct st_vio
   my_bool (*has_data) (Vio*);
   int (*io_wait)(Vio*, enum enum_vio_io_event, int);
   my_bool (*connect)(Vio*, struct sockaddr *, socklen_t, int);
+
+  Context *context;
 #ifdef _WIN32
   OVERLAPPED overlapped;
   HANDLE hPipe;

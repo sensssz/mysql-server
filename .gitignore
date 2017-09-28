@@ -78,6 +78,7 @@ CMakeCache.txt
 .deps
 .gdb_history
 .gdbinit
+.idea
 .libs
 .o
 .out
@@ -3117,6 +3118,8 @@ packaging/solaris/postinstall-solaris
 client/mysql_install_db
 internal/tests/open_files_limit
 client/mysql_ssl_rsa_setup
+include/rdma
+include/infiniband
 
 # Allow
 !include/*/boost/geometry/*
