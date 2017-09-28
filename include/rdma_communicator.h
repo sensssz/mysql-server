@@ -25,7 +25,7 @@
   do { \
     if ((x)) { \
       std::cerr << "[" << __FILE__ << ":" << __LINE__ << "] " #x " returned non-zero with message " << strerror(errno) << std::endl; \
-      return; \
+      return nullptr; \
     } \
   } while (0)
 
@@ -41,7 +41,7 @@
   do { \
     if (!(x)) { \
       std::cerr << "[" << __FILE__ << ":" << __LINE__ << "] " #x " returned zero with message " << strerror(errno) << std::endl; \
-      return; \
+      return nullptr; \
     } \
   } while (0)
 

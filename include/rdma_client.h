@@ -6,7 +6,7 @@
 class RdmaClient : public RdmaCommunicator {
 public:
   RdmaClient(std::string hostname, int port);
-  Status Connect();
+  StatusOr<Context *> Connect();
   char *GetRemoteBuffer();
   Status SendToServer(size_t size);
   void Disconnect();

@@ -29,11 +29,12 @@
 
   In all other cases, the code should be idential for the client and
   server.
-*/ 
+*/
 
 #include <my_global.h>
 #include "mysql.h"
 #include "hash.h"
+#include "rdma_client.h"
 #include "mysql/client_authentication.h"
 
 #ifdef EMBEDDED_LIBRARY
@@ -357,7 +358,7 @@ static HANDLE create_named_pipe(MYSQL *mysql, DWORD connect_timeout,
   if (!host || !strcmp(host,LOCAL_HOST))
     host=LOCAL_HOST_NAMEDPIPE;
 
-  
+
   pipe_name[sizeof(pipe_name)-1]= 0;		/* Safety if too long string */
   strxnmov(pipe_name, sizeof(pipe_name)-1, "\\\\", host, "\\pipe\\",
 	   unix_socket, NullS);
@@ -1069,12 +1070,12 @@ cli_safe_read_with_ok(MYSQL *mysql, my_bool parse_ok,
   }
 
   MYSQL_TRACE(PACKET_RECEIVED, mysql, (len, net->read_pos));
-  
+
   if (net->read_pos[0] == 255)
   {
     /*
       After server reprts an error, usually it is ready to accept new commands and
-      we set stage to READY_FOR_COMMAND. This can be modified by the caller of 
+      we set stage to READY_FOR_COMMAND. This can be modified by the caller of
       cli_safe_read().
     */
     MYSQL_TRACE_STAGE(mysql, READY_FOR_COMMAND);
@@ -1263,7 +1264,7 @@ cli_advanced_command(MYSQL *mysql, enum enum_server_command command,
     end_server(mysql);
     if (mysql_reconnect(mysql) || stmt_skip)
       goto end;
-    
+
     MYSQL_TRACE(SEND_COMMAND, mysql, (command, header_length, arg_length, header, arg));
     if (net_write_command(net,(uchar) command, header, header_length,
 			  arg, arg_length))
@@ -1273,7 +1274,7 @@ cli_advanced_command(MYSQL *mysql, enum enum_server_command command,
     }
   }
 
-  MYSQL_TRACE(PACKET_SENT, mysql, (header_length + arg_length)); 
+  MYSQL_TRACE(PACKET_SENT, mysql, (header_length + arg_length));
 
 #if defined(CLIENT_PROTOCOL_TRACING)
   switch (command)
@@ -1286,11 +1287,11 @@ cli_advanced_command(MYSQL *mysql, enum enum_server_command command,
     MYSQL_TRACE_STAGE(mysql, WAIT_FOR_ROW);
     break;
 
-  /* 
+  /*
     No server reply is expected after these commands so we reamin ready
     for the next command.
  */
-  case COM_STMT_SEND_LONG_DATA: 
+  case COM_STMT_SEND_LONG_DATA:
   case COM_STMT_CLOSE:
   case COM_REGISTER_SLAVE:
   case COM_QUIT:
@@ -1315,7 +1316,7 @@ cli_advanced_command(MYSQL *mysql, enum enum_server_command command,
     break;
 
   /*
-    Server replies to COM_STATISTICS with a single packet 
+    Server replies to COM_STATISTICS with a single packet
     containing a string with statistics information.
   */
   case COM_STATISTICS:
@@ -1338,7 +1339,7 @@ cli_advanced_command(MYSQL *mysql, enum enum_server_command command,
 
 #if defined(CLIENT_PROTOCOL_TRACING)
     /*
-      Return to READY_FOR_COMMAND protocol stage in case server reports error 
+      Return to READY_FOR_COMMAND protocol stage in case server reports error
       or sends OK packet.
     */
     if (!result || mysql->net.read_pos[0] == 0x00)
@@ -1428,7 +1429,7 @@ my_bool flush_one_result(MYSQL *mysql)
 /**
   Read a packet from network. If it's an OK packet, flush it.
 
-  @return  TRUE if error, FALSE otherwise. In case of 
+  @return  TRUE if error, FALSE otherwise. In case of
            success, is_ok_packet is set to TRUE or FALSE,
            based on what we got from network.
 */
@@ -1563,7 +1564,7 @@ static int check_license(MYSQL *mysql)
   if (!(res= mysql_use_result(mysql)))
     return 1;
   row= mysql_fetch_row(res);
-  /* 
+  /*
     If no rows in result set, or column value is NULL (none of these
     two is ever true for server variables now), or column value
     mismatch, set wrong license error.
@@ -1655,13 +1656,13 @@ static const char *default_options[]=
   NullS
 };
 enum option_id {
-  OPT_port=1, OPT_socket, OPT_compress, OPT_password, OPT_pipe, OPT_timeout, OPT_user, 
-  OPT_init_command, OPT_host, OPT_database, OPT_debug, OPT_return_found_rows, 
-  OPT_ssl_key, OPT_ssl_cert, OPT_ssl_ca, OPT_ssl_capath, 
-  OPT_character_sets_dir, OPT_default_character_set, OPT_interactive_timeout, 
-  OPT_connect_timeout, OPT_local_infile, OPT_disable_local_infile, 
-  OPT_ssl_cipher, OPT_max_allowed_packet, OPT_protocol, OPT_shared_memory_base_name, 
-  OPT_multi_results, OPT_multi_statements, OPT_multi_queries, OPT_secure_auth, 
+  OPT_port=1, OPT_socket, OPT_compress, OPT_password, OPT_pipe, OPT_timeout, OPT_user,
+  OPT_init_command, OPT_host, OPT_database, OPT_debug, OPT_return_found_rows,
+  OPT_ssl_key, OPT_ssl_cert, OPT_ssl_ca, OPT_ssl_capath,
+  OPT_character_sets_dir, OPT_default_character_set, OPT_interactive_timeout,
+  OPT_connect_timeout, OPT_local_infile, OPT_disable_local_infile,
+  OPT_ssl_cipher, OPT_max_allowed_packet, OPT_protocol, OPT_shared_memory_base_name,
+  OPT_multi_results, OPT_multi_statements, OPT_multi_queries, OPT_secure_auth,
   OPT_report_data_truncation, OPT_plugin_dir, OPT_default_auth,
   OPT_bind_address, OPT_ssl_crl, OPT_ssl_crlpath, OPT_enable_cleartext_plugin,
   OPT_tls_version, OPT_ssl_mode,
@@ -1990,7 +1991,7 @@ void mysql_read_default_options(struct st_mysql_options *options,
           break;
         case OPT_enable_cleartext_plugin:
           ENSURE_EXTENSIONS_PRESENT(options);
-          options->extension->enable_cleartext_plugin= 
+          options->extension->enable_cleartext_plugin=
             (!opt_arg || atoi(opt_arg) != 0) ? TRUE : FALSE;
           break;
 
@@ -2013,7 +2014,7 @@ void mysql_read_default_options(struct st_mysql_options *options,
 
 static void cli_fetch_lengths(ulong *to, MYSQL_ROW column,
 			      unsigned int field_count)
-{ 
+{
   ulong *prev_length;
   char *start=0;
   MYSQL_ROW end;
@@ -2523,7 +2524,7 @@ mysql_init(MYSQL *mysql)
 
 /*
   MYSQL::extension handling (see sql_common.h for declaration
-  of st_mysql_extension structure). 
+  of st_mysql_extension structure).
 */
 
 MYSQL_EXTENSION* mysql_extension_init(MYSQL *mysql MY_ATTRIBUTE((unused)))
@@ -2952,7 +2953,7 @@ const MY_CSET_OS_NAME charsets[]=
   {"Shift_JIS",      "sjis",     my_cs_exact},
   {"SJIS",           "sjis",     my_cs_exact},
   {"shiftjisx0213",  "sjis",     my_cs_exact},
-  
+
   {"tis620",         "tis620",   my_cs_exact},
   {"tis-620",        "tis620",   my_cs_exact},
 
@@ -3058,7 +3059,7 @@ mysql_set_character_set_with_default_collation(MYSQL *mysql)
   {
     /* Try to set compiled default collation when it's possible. */
     CHARSET_INFO *collation;
-    if ((collation= 
+    if ((collation=
          get_charset_by_name(MYSQL_DEFAULT_COLLATION_NAME, MYF(MY_WME))) &&
                              my_charset_same(mysql->charset, collation))
     {
@@ -3083,7 +3084,7 @@ int mysql_init_character_set(MYSQL *mysql)
   /* Set character set */
   if (!mysql->options.charset_name)
   {
-    if (!(mysql->options.charset_name= 
+    if (!(mysql->options.charset_name=
        my_strdup(key_memory_mysql_options,
                  MYSQL_DEFAULT_CHARSET_NAME,MYF(MY_WME))))
       return 1;
@@ -3289,13 +3290,13 @@ typedef struct {
 /*
   Write 1-8 bytes of string length header infromation to dest depending on
   value of src_len, then copy src_len bytes from src to dest.
- 
+
  @param dest Destination buffer of size src_len+8
  @param dest_end One byte past the end of the dest buffer
  @param src Source buff of size src_len
  @param src_end One byte past the end of the src buffer
- 
- @return pointer dest+src_len+header size or NULL if 
+
+ @return pointer dest+src_len+header size or NULL if
 */
 
 char *write_length_encoded_string4(char *dest, char *dest_end, char *src,
@@ -3331,7 +3332,7 @@ char *write_string(char *dest, char *dest_end, char *src, char *src_end)
   sends a COM_CHANGE_USER command with a caller provided payload
 
   Packet format:
-   
+
     Bytes       Content
     -----       ----
     n           user name - \0-terminated string
@@ -3443,7 +3444,7 @@ mysql_fill_packet_header(MYSQL *mysql, char *buff,
 
 /**
   Calcualtes client capabilities in effect (mysql->client_flag)
-  
+
   Needs to be called immediately after receiving the server handshake packet.
 
   @param  mysql   the connection context
@@ -3997,10 +3998,10 @@ int run_plugin_auth(MYSQL *mysql, char *data, uint data_len,
   MYSQL_TRACE(AUTH_PLUGIN, mysql, (auth_plugin->name));
 
   res= auth_plugin->authenticate_user((struct st_plugin_vio *)&mpvio, mysql);
-  DBUG_PRINT ("info", ("authenticate_user returned %s", 
-                       res == CR_OK ? "CR_OK" : 
+  DBUG_PRINT ("info", ("authenticate_user returned %s",
+                       res == CR_OK ? "CR_OK" :
                        res == CR_ERROR ? "CR_ERROR" :
-                       res == CR_OK_HANDSHAKE_COMPLETE ? 
+                       res == CR_OK_HANDSHAKE_COMPLETE ?
                          "CR_OK_HANDSHAKE_COMPLETE" : "error"));
 
   compile_time_assert(CR_OK == -1);
@@ -4009,7 +4010,7 @@ int run_plugin_auth(MYSQL *mysql, char *data, uint data_len,
   /*
     The connection may be closed. If so: do not try to read from the buffer.
   */
-  if (res > CR_OK && 
+  if (res > CR_OK &&
       (!my_net_is_inited(&mysql->net) || mysql->net.read_pos[0] != 254))
   {
     /*
@@ -4053,7 +4054,7 @@ int run_plugin_auth(MYSQL *mysql, char *data, uint data_len,
       DBUG_RETURN(1);
     }
     else
-    { 
+    {
       /* "use different plugin" packet */
       uint len;
       auth_plugin_name= (char*)mysql->net.read_pos + 1;
@@ -4076,10 +4077,10 @@ int run_plugin_auth(MYSQL *mysql, char *data, uint data_len,
     mpvio.plugin= auth_plugin;
     res= auth_plugin->authenticate_user((struct st_plugin_vio *)&mpvio, mysql);
 
-    DBUG_PRINT ("info", ("second authenticate_user returned %s", 
-                         res == CR_OK ? "CR_OK" : 
+    DBUG_PRINT ("info", ("second authenticate_user returned %s",
+                         res == CR_OK ? "CR_OK" :
                          res == CR_ERROR ? "CR_ERROR" :
-                         res == CR_OK_HANDSHAKE_COMPLETE ? 
+                         res == CR_OK_HANDSHAKE_COMPLETE ?
                          "CR_OK_HANDSHAKE_COMPLETE" : "error"));
     if (res > CR_OK)
     {
@@ -4160,7 +4161,7 @@ set_connect_attributes(MYSQL *mysql, char *buff, size_t buf_len)
 }
 
 
-MYSQL * STDCALL 
+MYSQL * STDCALL
 CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
 		       const char *passwd, const char *db,
 		       uint port, const char *unix_socket,ulong client_flag)
@@ -4376,199 +4377,218 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
       (!mysql->options.protocol ||
        mysql->options.protocol == MYSQL_PROTOCOL_TCP))
   {
-    struct addrinfo *res_lst, *client_bind_ai_lst= NULL, hints, *t_res;
-    char port_buf[NI_MAXSERV];
-    my_socket sock= SOCKET_ERROR;
-    int gai_errno, saved_error= 0, status= -1, bind_result= 0;
-    uint flags= VIO_BUFFERED_READ;
-
-    unix_socket=0;				/* This is not used */
-
-    if (!port)
+    if (!port) {
       port= mysql_port;
-
-    if (!host)
+    }
+    if (!host) {
       host= LOCAL_HOST;
+    }
 
-    my_snprintf(host_info=buff, sizeof(buff)-1, ER(CR_TCP_CONNECTION), host);
     DBUG_PRINT("info",("Server name: '%s'.  TCP sock: %d", host, port));
-
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype= SOCK_STREAM;
-    hints.ai_protocol= IPPROTO_TCP;
-    hints.ai_family= AF_UNSPEC;
-
-    DBUG_PRINT("info",("IPV6 getaddrinfo %s", host));
-    my_snprintf(port_buf, NI_MAXSERV, "%d", port);
-    gai_errno= getaddrinfo(host, port_buf, &hints, &res_lst);
-
-    if (gai_errno != 0) 
-    { 
-      /* 
-        For DBUG we are keeping the right message but for client we default to
-        historical error message.
-      */
-      DBUG_PRINT("info",("IPV6 getaddrinfo error %d", gai_errno));
-      set_mysql_extended_error(mysql, CR_UNKNOWN_HOST, unknown_sqlstate,
-                               ER(CR_UNKNOWN_HOST), host, errno);
-
+    RdmaClient client(std::string(host), port);
+    StatusOr<Context *> status_or_context = client.Connect();
+    if (!status_or_context.ok()) {
+      DBUG_PRINT("info", ("Error connecting to the server"));
+      goto error;
+    }
+    if (!(net->vio = rdma_vio_new(status_or_context.Take()))) {
+      client.Disconnect();
       goto error;
     }
 
-    /* Get address info for client bind name if it is provided */
-    if (mysql->options.ci.bind_address)
-    {
-      int bind_gai_errno= 0;
+    // struct addrinfo *res_lst, *client_bind_ai_lst= NULL, hints, *t_res;
+    // char port_buf[NI_MAXSERV];
+    // my_socket sock= SOCKET_ERROR;
+    // int gai_errno, saved_error= 0, status= -1, bind_result= 0;
+    // uint flags= VIO_BUFFERED_READ;
 
-      DBUG_PRINT("info",("Resolving addresses for client bind: '%s'",
-                         mysql->options.ci.bind_address));
-      /* Lookup address info for name */
-      bind_gai_errno= getaddrinfo(mysql->options.ci.bind_address, 0,
-                                  &hints, &client_bind_ai_lst);
-      if (bind_gai_errno)
-      {
-        DBUG_PRINT("info",("client bind getaddrinfo error %d", bind_gai_errno));
-        set_mysql_extended_error(mysql, CR_UNKNOWN_HOST, unknown_sqlstate,
-                                 ER(CR_UNKNOWN_HOST),
-                                 mysql->options.ci.bind_address,
-                                 bind_gai_errno);
+    // unix_socket=0;				/* This is not used */
 
-        freeaddrinfo(res_lst);
-        goto error;
-      }
-      DBUG_PRINT("info", ("  got address info for client bind name"));
-    }
+    // if (!port)
+    //   port= mysql_port;
 
-    /*
-      A hostname might map to multiple IP addresses (IPv4/IPv6). Go over the
-      list of IP addresses until a successful connection can be established.
-      For each IP address, attempt to bind the socket to each client address
-      for the client-side bind hostname until the bind is successful.
-    */
-    DBUG_PRINT("info", ("Try connect on all addresses for host."));
-    for (t_res= res_lst; t_res; t_res= t_res->ai_next)
-    {
-      DBUG_PRINT("info", ("Create socket, family: %d  type: %d  proto: %d",
-                          t_res->ai_family, t_res->ai_socktype,
-                          t_res->ai_protocol));
+    // if (!host)
+    //   host= LOCAL_HOST;
 
-      sock= socket(t_res->ai_family, t_res->ai_socktype, t_res->ai_protocol);
-      if (sock == SOCKET_ERROR)
-      {
-        DBUG_PRINT("info", ("Socket created was invalid"));
-        /* Try next address if there is one */
-        saved_error= socket_errno;
-        continue;
-      }
+    // my_snprintf(host_info=buff, sizeof(buff)-1, ER(CR_TCP_CONNECTION), host);
+    // DBUG_PRINT("info",("Server name: '%s'.  TCP sock: %d", host, port));
 
-      if (client_bind_ai_lst)
-      {
-        struct addrinfo* curr_bind_ai= NULL;
-        DBUG_PRINT("info", ("Attempting to bind socket to bind address(es)"));
+    // memset(&hints, 0, sizeof(hints));
+    // hints.ai_socktype= SOCK_STREAM;
+    // hints.ai_protocol= IPPROTO_TCP;
+    // hints.ai_family= AF_UNSPEC;
 
-        /*
-           We'll attempt to bind to each of the addresses returned, until
-           we find one that works.
-           If none works, we'll try the next destination host address
-           (if any)
-        */
-        curr_bind_ai= client_bind_ai_lst;
+    // DBUG_PRINT("info",("IPV6 getaddrinfo %s", host));
+    // my_snprintf(port_buf, NI_MAXSERV, "%d", port);
+    // gai_errno= getaddrinfo(host, port_buf, &hints, &res_lst);
 
-        while (curr_bind_ai != NULL)
-        {
-          /* Attempt to bind the socket to the given address */
-          bind_result= bind(sock,
-                            curr_bind_ai->ai_addr,
-                            curr_bind_ai->ai_addrlen);
-          if (!bind_result)
-            break;   /* Success */
+    // if (gai_errno != 0)
+    // {
+    //   /*
+    //     For DBUG we are keeping the right message but for client we default to
+    //     historical error message.
+    //   */
+    //   DBUG_PRINT("info",("IPV6 getaddrinfo error %d", gai_errno));
+    //   set_mysql_extended_error(mysql, CR_UNKNOWN_HOST, unknown_sqlstate,
+    //                            ER(CR_UNKNOWN_HOST), host, errno);
 
-          DBUG_PRINT("info", ("bind failed, attempting another bind address"));
-          /* Problem with the bind, move to next address if present */
-          curr_bind_ai= curr_bind_ai->ai_next;
-        }
+    //   goto error;
+    // }
 
-        if (bind_result)
-        {
-          /*
-            Could not bind to any client-side address with this destination
-             Try the next destination address (if any)
-          */
-          DBUG_PRINT("info", ("All bind attempts with this address failed"));
-          saved_error= socket_errno;
-          closesocket(sock);
-          continue;
-        }
-        DBUG_PRINT("info", ("Successfully bound client side of socket"));
-      }
+    // /* Get address info for client bind name if it is provided */
+    // if (mysql->options.ci.bind_address)
+    // {
+    //   int bind_gai_errno= 0;
 
-      /* Create a new Vio object to abstract the socket. */
-      if (!net->vio)
-      {
-        if (!(net->vio= vio_new(sock, VIO_TYPE_TCPIP, flags)))
-        {
-          set_mysql_error(mysql, CR_OUT_OF_MEMORY, unknown_sqlstate);
-          closesocket(sock);
-          freeaddrinfo(res_lst);
-          if (client_bind_ai_lst)
-            freeaddrinfo(client_bind_ai_lst);
-          goto error;
-        }
-      }
-      /* Just reinitialize if one is already allocated. */
-      else if (vio_reset(net->vio, VIO_TYPE_TCPIP, sock, NULL, flags))
-      {
-        set_mysql_error(mysql, CR_UNKNOWN_ERROR, unknown_sqlstate);
-        closesocket(sock);
-        freeaddrinfo(res_lst);
-        if (client_bind_ai_lst)
-          freeaddrinfo(client_bind_ai_lst);
-        goto error;
-      }
+    //   DBUG_PRINT("info",("Resolving addresses for client bind: '%s'",
+    //                      mysql->options.ci.bind_address));
+    //   /* Lookup address info for name */
+    //   bind_gai_errno= getaddrinfo(mysql->options.ci.bind_address, 0,
+    //                               &hints, &client_bind_ai_lst);
+    //   if (bind_gai_errno)
+    //   {
+    //     DBUG_PRINT("info",("client bind getaddrinfo error %d", bind_gai_errno));
+    //     set_mysql_extended_error(mysql, CR_UNKNOWN_HOST, unknown_sqlstate,
+    //                              ER(CR_UNKNOWN_HOST),
+    //                              mysql->options.ci.bind_address,
+    //                              bind_gai_errno);
 
-      DBUG_PRINT("info", ("Connect socket"));
-      status= vio_socket_connect(net->vio, t_res->ai_addr,
-                                 (socklen_t)t_res->ai_addrlen,
-                                 get_vio_connect_timeout(mysql));
-      /*
-        Here we rely on vio_socket_connect() to return success only if
-        the connect attempt was really successful. Otherwise we would
-        stop trying another address, believing we were successful.
-      */
-      if (!status)
-        break;
+    //     freeaddrinfo(res_lst);
+    //     goto error;
+    //   }
+    //   DBUG_PRINT("info", ("  got address info for client bind name"));
+    // }
 
-      /*
-        Save either the socket error status or the error code of
-        the failed vio_connection operation. It is necessary to
-        avoid having it overwritten by later operations.
-      */
-      saved_error= socket_errno;
+    // /*
+    //   A hostname might map to multiple IP addresses (IPv4/IPv6). Go over the
+    //   list of IP addresses until a successful connection can be established.
+    //   For each IP address, attempt to bind the socket to each client address
+    //   for the client-side bind hostname until the bind is successful.
+    // */
+    // DBUG_PRINT("info", ("Try connect on all addresses for host."));
+    // for (t_res= res_lst; t_res; t_res= t_res->ai_next)
+    // {
+    //   DBUG_PRINT("info", ("Create socket, family: %d  type: %d  proto: %d",
+    //                       t_res->ai_family, t_res->ai_socktype,
+    //                       t_res->ai_protocol));
 
-      DBUG_PRINT("info", ("No success, try next address."));
-    }
-    DBUG_PRINT("info",
-               ("End of connect attempts, sock: %d  status: %d  error: %d",
-                sock, status, saved_error));
+    //   sock= socket(t_res->ai_family, t_res->ai_socktype, t_res->ai_protocol);
+    //   if (sock == SOCKET_ERROR)
+    //   {
+    //     DBUG_PRINT("info", ("Socket created was invalid"));
+    //     /* Try next address if there is one */
+    //     saved_error= socket_errno;
+    //     continue;
+    //   }
 
-    freeaddrinfo(res_lst);
-    if (client_bind_ai_lst)
-      freeaddrinfo(client_bind_ai_lst);
+    //   if (client_bind_ai_lst)
+    //   {
+    //     struct addrinfo* curr_bind_ai= NULL;
+    //     DBUG_PRINT("info", ("Attempting to bind socket to bind address(es)"));
 
-    if (sock == SOCKET_ERROR)
-    {
-      set_mysql_extended_error(mysql, CR_IPSOCK_ERROR, unknown_sqlstate,
-                                ER(CR_IPSOCK_ERROR), saved_error);
-      goto error;
-    }
+    //     /*
+    //        We'll attempt to bind to each of the addresses returned, until
+    //        we find one that works.
+    //        If none works, we'll try the next destination host address
+    //        (if any)
+    //     */
+    //     curr_bind_ai= client_bind_ai_lst;
 
-    if (status)
-    {
-      DBUG_PRINT("error",("Got error %d on connect to '%s'", saved_error, host));
-      set_mysql_extended_error(mysql, CR_CONN_HOST_ERROR, unknown_sqlstate,
-                                ER(CR_CONN_HOST_ERROR), host, saved_error);
-      goto error;
-    }
+    //     while (curr_bind_ai != NULL)
+    //     {
+    //       /* Attempt to bind the socket to the given address */
+    //       bind_result= bind(sock,
+    //                         curr_bind_ai->ai_addr,
+    //                         curr_bind_ai->ai_addrlen);
+    //       if (!bind_result)
+    //         break;   /* Success */
+
+    //       DBUG_PRINT("info", ("bind failed, attempting another bind address"));
+    //       /* Problem with the bind, move to next address if present */
+    //       curr_bind_ai= curr_bind_ai->ai_next;
+    //     }
+
+    //     if (bind_result)
+    //     {
+    //       /*
+    //         Could not bind to any client-side address with this destination
+    //          Try the next destination address (if any)
+    //       */
+    //       DBUG_PRINT("info", ("All bind attempts with this address failed"));
+    //       saved_error= socket_errno;
+    //       closesocket(sock);
+    //       continue;
+    //     }
+    //     DBUG_PRINT("info", ("Successfully bound client side of socket"));
+    //   }
+
+    //   /* Create a new Vio object to abstract the socket. */
+    //   if (!net->vio)
+    //   {
+    //     if (!(net->vio= vio_new(sock, VIO_TYPE_TCPIP, flags)))
+    //     {
+    //       set_mysql_error(mysql, CR_OUT_OF_MEMORY, unknown_sqlstate);
+    //       closesocket(sock);
+    //       freeaddrinfo(res_lst);
+    //       if (client_bind_ai_lst)
+    //         freeaddrinfo(client_bind_ai_lst);
+    //       goto error;
+    //     }
+    //   }
+    //   /* Just reinitialize if one is already allocated. */
+    //   else if (vio_reset(net->vio, VIO_TYPE_TCPIP, sock, NULL, flags))
+    //   {
+    //     set_mysql_error(mysql, CR_UNKNOWN_ERROR, unknown_sqlstate);
+    //     closesocket(sock);
+    //     freeaddrinfo(res_lst);
+    //     if (client_bind_ai_lst)
+    //       freeaddrinfo(client_bind_ai_lst);
+    //     goto error;
+    //   }
+
+    //   DBUG_PRINT("info", ("Connect socket"));
+    //   status= vio_socket_connect(net->vio, t_res->ai_addr,
+    //                              (socklen_t)t_res->ai_addrlen,
+    //                              get_vio_connect_timeout(mysql));
+    //   /*
+    //     Here we rely on vio_socket_connect() to return success only if
+    //     the connect attempt was really successful. Otherwise we would
+    //     stop trying another address, believing we were successful.
+    //   */
+    //   if (!status)
+    //     break;
+
+    //   /*
+    //     Save either the socket error status or the error code of
+    //     the failed vio_connection operation. It is necessary to
+    //     avoid having it overwritten by later operations.
+    //   */
+    //   saved_error= socket_errno;
+
+    //   DBUG_PRINT("info", ("No success, try next address."));
+    // }
+    // DBUG_PRINT("info",
+    //            ("End of connect attempts, sock: %d  status: %d  error: %d",
+    //             sock, status, saved_error));
+
+    // freeaddrinfo(res_lst);
+    // if (client_bind_ai_lst)
+    //   freeaddrinfo(client_bind_ai_lst);
+
+    // if (sock == SOCKET_ERROR)
+    // {
+    //   set_mysql_extended_error(mysql, CR_IPSOCK_ERROR, unknown_sqlstate,
+    //                             ER(CR_IPSOCK_ERROR), saved_error);
+    //   goto error;
+    // }
+
+    // if (status)
+    // {
+    //   DBUG_PRINT("error",("Got error %d on connect to '%s'", saved_error, host));
+    //   set_mysql_extended_error(mysql, CR_CONN_HOST_ERROR, unknown_sqlstate,
+    //                             ER(CR_CONN_HOST_ERROR), host, saved_error);
+    //   goto error;
+    // }
   }
 
   DBUG_PRINT("info", ("net->vio: %p", net->vio));
@@ -4645,7 +4665,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   server_version_end= end= strend((char*) net->read_pos+1);
   mysql->thread_id=uint4korr((uchar*) end + 1);
   end+=5;
-  /* 
+  /*
     Scramble is split into two parts because old clients do not understand
     long scrambles; here goes the first part.
   */
@@ -4796,7 +4816,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   if (mysql->client_flag & CLIENT_COMPRESS)      /* We will use compression */
     net->compress=1;
 
-#ifdef CHECK_LICENSE 
+#ifdef CHECK_LICENSE
   if (check_license(mysql))
     goto error;
 #endif
@@ -5030,7 +5050,7 @@ void mysql_close_free(MYSQL *mysql)
 
 
 /**
-  For use when the connection to the server has been lost (in which case 
+  For use when the connection to the server has been lost (in which case
   the server has discarded all information about prepared statements
   associated with the connection).
 
@@ -5174,7 +5194,7 @@ get_info:
     {
       set_mysql_error(mysql, CR_MALFORMED_PACKET, unknown_sqlstate);
       DBUG_RETURN(1);
-    }   
+    }
 
     error= handle_local_infile(mysql,(char*) pos);
 
@@ -5362,7 +5382,7 @@ mysql_fetch_row(MYSQL_RES *res)
       if (mysql->status != MYSQL_STATUS_USE_RESULT)
       {
         set_mysql_error(mysql,
-                        res->unbuffered_fetch_cancelled ? 
+                        res->unbuffered_fetch_cancelled ?
                         CR_FETCH_CANCELED : CR_COMMANDS_OUT_OF_SYNC,
                         unknown_sqlstate);
       }
@@ -5622,7 +5642,7 @@ mysql_options(MYSQL *mysql,enum mysql_option option, const void *arg)
     break;
   case MYSQL_ENABLE_CLEARTEXT_PLUGIN:
     ENSURE_EXTENSIONS_PRESENT(&mysql->options);
-    mysql->options.extension->enable_cleartext_plugin= 
+    mysql->options.extension->enable_cleartext_plugin=
       (*(my_bool*) arg) ? TRUE : FALSE;
     break;
   case MYSQL_OPT_CAN_HANDLE_EXPIRED_PASSWORDS:
@@ -6081,7 +6101,7 @@ int STDCALL mysql_session_track_get_next(MYSQL *mysql,
 
   EXAMPLE
     4.1.0-alfa ->  40100
-  
+
   NOTES
     We will ensure that a newer server always has a bigger number.
 
@@ -6111,7 +6131,7 @@ mysql_get_server_version(MYSQL *mysql)
 }
 
 
-/* 
+/*
    mysql_set_character_set function sends SET NAMES cs_name to
    the server (which changes character_set_client, character_set_result
    and character_set_connection) and updates mysql->charset so other
@@ -6130,7 +6150,7 @@ int STDCALL mysql_set_character_set(MYSQL *mysql, const char *cs_name)
     /* Initialize with automatic OS character set detection. */
     mysql_options(mysql, MYSQL_SET_CHARSET_NAME, cs_name);
     mysql_init_character_set(mysql);
-    /* 
+    /*
       In case of automatic OS character set detection
       mysql_init_character_set changes mysql->options.charset_name
       from "auto" to the real character set name.
@@ -6232,10 +6252,8 @@ static int clear_password_auth_client(MYSQL_PLUGIN_VIO *vio, MYSQL *mysql)
   int res;
 
   /* send password in clear text */
-  res= vio->write_packet(vio, (const unsigned char *) mysql->passwd, 
+  res= vio->write_packet(vio, (const unsigned char *) mysql->passwd,
 						 (int)strlen(mysql->passwd) + 1);
 
   return res ? CR_ERROR : CR_OK;
 }
-
-

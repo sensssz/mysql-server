@@ -8,7 +8,7 @@ const int kTimeoutInMs = 500; /* ms */
 RdmaClient::RdmaClient(std::string hostname, int port) :
     port_(port), hostname_(hostname), context_(nullptr) {}
 
-Status RdmaClient::Connect() {
+StatusOr<Context *> RdmaClient::Connect() {
   struct addrinfo *addr;
   struct rdma_cm_event *event = nullptr;
 
@@ -29,7 +29,7 @@ Status RdmaClient::Connect() {
 
     RETURN_IF_ERROR(OnEvent(&event_copy));
     if (event_copy.event == RDMA_CM_EVENT_ESTABLISHED) {
-      return Status::Ok();
+      return context_;
     }
   }
   return Status::Err();

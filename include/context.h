@@ -7,6 +7,10 @@
 
 #include <rdma/rdma_cma.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct Context {
   struct rdma_cm_id *id;
 
@@ -32,5 +36,9 @@ typedef struct Context {
 } Context;
 
 void DestroyContext(Context *context);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // RDMA_CONTEXT_H_

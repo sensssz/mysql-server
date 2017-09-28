@@ -1,8 +1,6 @@
 #include "rdma_communicator.h"
 #include "status.h"
 
-namespace sqpkv {
-
 // 16MB
 const int kMaxBufferSize = 1.6e+7;
 const int kQueueDepth = 2048;
@@ -131,6 +129,7 @@ Status RdmaCommunicator::InitContext(Context *context, struct rdma_cm_id *id) {
   id->context = context;
 
   RETURN_IF_ERROR(RegisterMemoryRegion(context));
+  context->queue_depth = kQueueDepth;
   context->unsignaled_sends = 0;
   return Status::Ok();
 }
@@ -140,7 +139,7 @@ Status RdmaCommunicator::PostInitContext(Context *context) {
 }
 
 StatusOr<Context> RdmaCommunicator::BuildContext(struct rdma_cm_id *id) {
-  auto context = std::make_unique<Context>();
+  auto context = make_unique<Context>();
   auto status = InitContext(context.get(), id);
   if (!status.ok()) {
     return std::move(status);
@@ -193,5 +192,3 @@ void RdmaCommunicator::DestroyConnection(void *context_void) {
   Context *context = reinterpret_cast<Context *>(context_void);
   delete context;
 }
-
-} // namespace sqpkv

@@ -1,14 +1,14 @@
 # Copyright (c) 2006, 2017, Oracle and/or its affiliates. All rights reserved.
-# 
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; version 2 of the License.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
@@ -178,15 +178,15 @@ SET(CLIENT_API_FUNCTIONS_UNDOCUMENTED
 )
 
 SET(CLIENT_SOURCES
-  get_password.c 
+  get_password.c
   libmysql.c
   errmsg.c
-  ../sql-common/client.c 
-  ../sql-common/my_time.c 
-  ../sql-common/client_plugin.c 
+  ../sql-common/client.c
+  ../sql-common/my_time.c
+  ../sql-common/client_plugin.c
   ../sql-common/client_authentication.cc
   ../sql/net_serv.cc
-  ../sql-common/pack.c 
+  ../sql-common/pack.c
   ../sql/auth/password.c
 )
 
@@ -218,10 +218,10 @@ ADD_CONVENIENCE_LIBRARY(clientlib ${CLIENT_SOURCES})
 DTRACE_INSTRUMENT(clientlib)
 ADD_DEPENDENCIES(clientlib GenError)
 
-SET(LIBS clientlib dbug strings vio mysys mysys_ssl ${ZLIB_LIBRARY} ${SSL_LIBRARIES} ${LIBDL})
+SET(LIBS clientlib dbug strings vio mysys mysys_ssl ${ZLIB_LIBRARY} ${SSL_LIBRARIES} ${LIBDL} /usr/lib64/libnl.so)
 
 #
-# On Windows platform client library includes the client-side 
+# On Windows platform client library includes the client-side
 # Windows Native Authentication plugin.
 #
 IF(WIN32)
@@ -233,7 +233,7 @@ ENDIF()
 # LDAP authentication SASL client plugin
 MESSAGE(STATUS "Creating LDAP authentication SASL client library.")
 ADD_SUBDIRECTORY(authentication_ldap)
-  
+
 # Merge several convenience libraries into one big mysqlclient
 MERGE_LIBRARIES(mysqlclient STATIC ${LIBS} COMPONENT Development)
 
@@ -252,14 +252,14 @@ ENDMACRO()
 IF(UNIX)
   MACRO(GET_VERSIONED_LIBNAME LIBNAME EXTENSION VERSION OUTNAME)
     SET(DOT_VERSION ".${VERSION}")
-    IF(DOT_VERSION STREQUAL ".") 
+    IF(DOT_VERSION STREQUAL ".")
       SET(DOT_VERSION "")
     ENDIF()
     IF(APPLE)
       SET(${OUTNAME} ${LIBNAME}${DOT_VERSION}${EXTENSION})
     ELSE()
       SET(${OUTNAME} ${LIBNAME}${EXTENSION}${DOT_VERSION})
-    ENDIF() 
+    ENDIF()
   ENDMACRO()
 ENDIF()
 
@@ -287,9 +287,9 @@ IF(NOT DISABLE_SHARED)
         "${SHARED_LIB_MAJOR_VERSION}.${SHARED_LIB_MINOR_VERSION}.${SHARED_LIB_PATCH_VERSION}")
     ENDIF()
     # Name of shared library is mysqlclient on Unix
-    SET_TARGET_PROPERTIES(libmysql PROPERTIES 
-      OUTPUT_NAME mysqlclient 
-      VERSION "${OS_SHARED_LIB_VERSION}" 
+    SET_TARGET_PROPERTIES(libmysql PROPERTIES
+      OUTPUT_NAME mysqlclient
+      VERSION "${OS_SHARED_LIB_VERSION}"
       SOVERSION "${SHARED_LIB_MAJOR_VERSION}")
     CONFIGURE_FILE(libmysql.ver.in ${CMAKE_CURRENT_BINARY_DIR}/libmysql.ver)
 
@@ -315,7 +315,7 @@ IF(NOT DISABLE_SHARED)
         "${libmysql_link_flags} -Wl,--version-script=${CMAKE_CURRENT_BINARY_DIR}/libmysql.ver")
       SET_TARGET_PROPERTIES(libmysql
         PROPERTIES LINK_FLAGS "${libmysql_link_flags}")
-    ENDIF() 
+    ENDIF()
     # clean direct output needs to be set several targets have the same name
     #(mysqlclient in this case)
     SET_TARGET_PROPERTIES(mysqlclient PROPERTIES CLEAN_DIRECT_OUTPUT 1)
@@ -359,4 +359,3 @@ IF(DISABLE_SHARED)
 ELSE()
   TARGET_LINK_LIBRARIES(libmysql_api_test libmysql)
 ENDIF()
-

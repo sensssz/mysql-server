@@ -38,6 +38,7 @@ Context *RdmaServer::Accept() {
       return current_context_;
     }
   }
+  return nullptr;
 }
 
 void RdmaServer::Stop() {

@@ -4,6 +4,12 @@
 #include <string>
 #include <memory>
 
+template<typename T, typename... Args>
+std::unique_ptr<T> make_unique(Args&&... args)
+{
+    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+
 class Status {
 public:
   enum Code {
@@ -37,7 +43,7 @@ public:
   StatusOr(std::unique_ptr<T> obj) : obj_(std::move(obj)) {
       status_ = Status::Ok();
   }
-  StatusOr(const T &value) : StatusOr(std::make_unique<T>(value)) {}
+  StatusOr(const T &value) : StatusOr(make_unique<T>(value)) {}
   StatusOr(Status status) : status_(status) {}
 
   T *operator->() {

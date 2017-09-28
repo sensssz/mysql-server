@@ -1,14 +1,14 @@
 # Copyright (c) 2006, 2016, Oracle and/or its affiliates. All rights reserved.
-# 
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; version 2 of the License.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
@@ -17,18 +17,18 @@ INCLUDE_DIRECTORIES(${ZLIB_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOUR
 
 SET(MYSYS_SOURCES  array.c charset-def.c charset.c checksum.c
 				errors.c hash.c list.c mf_cache.c mf_dirname.c mf_fn_ext.c
-				mf_format.c mf_getdate.c mf_iocache.c mf_iocache2.c mf_keycache.c 
+				mf_format.c mf_getdate.c mf_iocache.c mf_iocache2.c mf_keycache.c
 				mf_keycaches.c mf_loadpath.c mf_pack.c mf_path.c mf_qsort.c mf_qsort2.c
 				mf_radix.c mf_same.c mf_soundex.c mf_arr_appstr.c
 				mf_tempfile.c mf_unixpath.c mf_wcomp.c mulalloc.c my_access.c
 				my_alloc.c my_bit.c my_bitmap.c my_chsize.c
 				my_compress.c my_copy.c  my_create.c my_delete.c
-				my_div.c my_error.c my_file.c my_fopen.c my_fstream.c 
+				my_div.c my_error.c my_file.c my_fopen.c my_fstream.c
 				my_gethwaddr.c my_getsystime.c my_getwd.c my_compare.c my_init.c
 				my_lib.c my_lock.c my_malloc.c my_mess.c
 				my_mkdir.c my_mmap.c my_once.c my_open.c my_pread.c
 				my_read.c my_redel.c my_rename.c my_seek.c
-				my_static.c my_symlink.c my_symlink2.c my_sync.c my_thr_init.c 
+				my_static.c my_symlink.c my_symlink2.c my_sync.c my_thr_init.c
 				my_write.c ptr_cmp.c queues.c sql_chars.c stacktrace.c
 				string.c thr_cond.c thr_lock.c thr_mutex.c
 				thr_rwlock.c tree.c typelib.c base64.c my_memmem.c
@@ -65,8 +65,9 @@ IF(HAVE_LINUX_LARGE_PAGES)
 ENDIF()
 
 ADD_CONVENIENCE_LIBRARY(mysys ${MYSYS_SOURCES})
-TARGET_LINK_LIBRARIES(mysys dbug strings ${ZLIB_LIBRARY} 
- ${LIBNSL} ${LIBM} ${LIBRT} ${LIBATOMIC} ${LIBEXECINFO})
+TARGET_LINK_LIBRARIES(mysys dbug strings ${ZLIB_LIBRARY}
+ ${LIBNSL} ${LIBM} ${LIBRT} ${LIBATOMIC} ${LIBEXECINFO}
+ /usr/lib64/libnl.so)
 DTRACE_INSTRUMENT(mysys)
 
 # Need explicit pthread for gcc -fsanitize=address

@@ -1,14 +1,14 @@
 # Copyright (c) 2012, 2017, Oracle and/or its affiliates. All rights reserved.
-# 
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; version 2 of the License.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
@@ -24,9 +24,9 @@ ENDIF()
 IF(SIZEOF_VOIDP EQUAL 8)
   SET(64BIT 1)
 ENDIF()
- 
+
 # Compiler options
-IF(UNIX)  
+IF(UNIX)
 
   # Default GCC flags
   IF(CMAKE_COMPILER_IS_GNUCC)
@@ -54,7 +54,7 @@ IF(UNIX)
     SET(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 ${COMMON_C_FLAGS}")
   ENDIF()
   IF(CMAKE_COMPILER_IS_GNUCXX)
-    SET(COMMON_CXX_FLAGS               "-g -fabi-version=2 -fno-omit-frame-pointer -fno-strict-aliasing")
+    SET(COMMON_CXX_FLAGS               "-g -std=c++11 -fabi-version=2 -fno-omit-frame-pointer -fno-strict-aliasing")
     # GCC 6 has C++14 as default, set it explicitly to the old default.
     EXECUTE_PROCESS(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion
                     OUTPUT_VARIABLE GXX_VERSION)
@@ -101,7 +101,7 @@ IF(UNIX)
     IF(CMAKE_SYSTEM_VERSION VERSION_GREATER "5.9")
       # Link mysqld with mtmalloc on Solaris 10 and later
       SET(WITH_MYSQLD_LDFLAGS "-lmtmalloc" CACHE STRING "")
-    ENDIF() 
+    ENDIF()
     # Possible changes to the defaults set above for gcc/linux.
     # Vectorized code dumps core in 32bit mode.
     IF(CMAKE_COMPILER_IS_GNUCC AND 32BIT)
