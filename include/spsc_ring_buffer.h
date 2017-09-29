@@ -9,8 +9,8 @@ extern "C" {
 #endif
 
 typedef struct SpscRingBuffer {
-  volatile int64_t read_loc;
-  volatile int64_t write_loc;
+  volatile int64 read_loc;
+  volatile int64 write_loc;
   uint64_t buf_size;
   char *  buffer;
 } SpscRingBuffer;
@@ -21,6 +21,7 @@ my_bool SpscBufferHasData(SpscRingBuffer *buffer);
 size_t SpscBufferRead(SpscRingBuffer *buffer, char *out_buffer, size_t size);
 void SpscBufferWrite(SpscRingBuffer *buffer, const char *data, size_t size);
 my_bool SpscBufferWriteAsync(SpscRingBuffer *buffer, const char *data, size_t size);
+size_t SpscBufferDataSize(SpscRingBuffer *buffer);
 
 #ifdef __cplusplus
 }

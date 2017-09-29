@@ -2,7 +2,7 @@
 #include "status.h"
 
 // 16MB
-const int kMaxBufferSize = 1.6e+7;
+const int kMaxBufferSize = 1000;
 const int kQueueDepth = 2048;
 
 RdmaCommunicator::RdmaCommunicator() : cm_id_(nullptr), event_channel_(nullptr) {}
@@ -130,6 +130,7 @@ Status RdmaCommunicator::InitContext(Context *context, struct rdma_cm_id *id) {
   id->context = context;
 
   RETURN_IF_ERROR(RegisterMemoryRegion(context));
+  context->buffer = CreateSpscRingBuffer();
   context->queue_depth = kQueueDepth;
   context->unsignaled_sends = 0;
   return Status::Ok();

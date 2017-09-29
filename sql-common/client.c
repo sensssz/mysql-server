@@ -4175,6 +4175,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   ulong		pkt_length;
   NET		*net= &mysql->net;
   my_bool       scramble_buffer_allocated= FALSE;
+  Context *context = NULL;
 #ifdef _WIN32
   HANDLE	hPipe=INVALID_HANDLE_VALUE;
 #endif
@@ -4385,7 +4386,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
     }
 
     DBUG_PRINT("info",("Server name: '%s'.  TCP sock: %d", host, port));
-    Context *context = RdmaConnect(host, port);
+    context = RdmaConnect(host, port);
     if (context == NULL) {
       DBUG_PRINT("info", ("Error connecting to the server"));
       goto error;
