@@ -1,8 +1,10 @@
 #include "rdma_communicator.h"
 #include "status.h"
 
+#include "mysql_com.h"
+
 // 16MB
-const int kMaxBufferSize = 1000;
+const int kMaxBufferSize = MAX_PACKET_LENGTH + sizeof(size_t);
 const int kQueueDepth = 2048;
 
 RdmaCommunicator::RdmaCommunicator() : cm_id_(nullptr), event_channel_(nullptr) {}
@@ -41,6 +43,9 @@ void RdmaCommunicator::OnWorkCompletion(Context *context, struct ibv_wc *wc) {
   }
   if (wc->opcode & IBV_WC_RECV) {
     size_t size = *(reinterpret_cast<size_t *>(context->recv_region));
+    if (size == MAX_PACKET_LENGTH) {
+      PostReceive(context);
+    }
     SpscBufferWrite(context->buffer, context->recv_region + sizeof(size_t), size);
   }
 }
