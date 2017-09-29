@@ -53,10 +53,16 @@ static my_bool PostReceive(Context *context) {
 }
 
 size_t vio_read_rdma(Vio *vio, uchar * buf, size_t size) {
+  if (vio->context == NULL) {
+    return 0;
+  }
   return SpscBufferRead(vio->context->buffer, (char *) buf, size);
 }
 
 size_t vio_write_rdma(Vio *vio, const uchar *buf, size_t size) {
+  if (vio->context == NULL) {
+    return 0;
+  }
   *((size_t *) vio->context->send_region) = size;
   memcpy(vio->context->send_region + sizeof(size_t), buf, size);
   if (!PostReceive(vio->context)) {
