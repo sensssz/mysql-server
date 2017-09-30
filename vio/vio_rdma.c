@@ -79,7 +79,7 @@ my_bool vio_is_connected_rdma(Vio *vio) {
 }
 
 int vio_shutdown_rdma(Vio * vio) {
-  DestroyContext(vio->context);
+  rdma_disconnect(vio->context->id);
   vio->context = NULL;
   return 0;
 }
