@@ -4378,14 +4378,16 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
       (!mysql->options.protocol ||
        mysql->options.protocol == MYSQL_PROTOCOL_TCP))
   {
+    unix_socket=0;				/* This is not used */
     if (!port) {
       port= mysql_port;
     }
     if (!host) {
       host= LOCAL_HOST;
     }
-
+    my_snprintf(host_info=buff, sizeof(buff)-1, ER(CR_TCP_CONNECTION), host);
     DBUG_PRINT("info",("Server name: '%s'.  TCP sock: %d", host, port));
+
     context = RdmaConnect(host, port);
     if (context == NULL) {
       DBUG_PRINT("info", ("Error connecting to the server"));
