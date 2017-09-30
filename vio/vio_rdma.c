@@ -2,7 +2,11 @@
 #include "vio_rdma.h"
 #include "context.h"
 
-static const int kMaxBufferSize = 1000;
+#include <iostream>
+
+#include "mysql_com.h"
+
+static const int kMaxBufferSize = MAX_PACKET_LENGTH + sizeof(size_t);
 
 static my_bool PostSend(Context *context, size_t size) {
   struct ibv_send_wr wr, *bad_wr = NULL;
@@ -22,7 +26,7 @@ static my_bool PostSend(Context *context, size_t size) {
   wr.num_sge = 1;
   wr.send_flags = send_flags;
 
-  sge.addr = (uint64_t) context->send_region;
+  sge.addr = (uintptr_t) context->send_region;
   sge.length = size;
   sge.lkey = context->send_mr->lkey;
 
@@ -30,8 +34,10 @@ static my_bool PostSend(Context *context, size_t size) {
     // Left empry.
   }
   if (ibv_post_send(context->queue_pair, &wr, &bad_wr) != 0) {
+    std::cerr << "PostSend fails" << std::endl;
     return FALSE;
   }
+  std::cerr << "PostSend successes" << std::endl;
   return TRUE;
 }
 
@@ -47,8 +53,10 @@ static my_bool PostReceive(Context *context) {
   sge.length = kMaxBufferSize;
   sge.lkey = context->recv_mr->lkey;
   if (ibv_post_recv(context->queue_pair, &wr, &bad_wr) != 0) {
+    std::cerr << "PostRecv fails" << std::endl;
     return FALSE;
   }
+  std::cerr << "PostRecv successes, waiting for response" << std::endl;
   return TRUE;
 }
 

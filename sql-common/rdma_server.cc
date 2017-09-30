@@ -1,5 +1,7 @@
 #include "rdma_server.h"
 
+#include <iostream>
+
 RdmaServer::RdmaServer(int port, int backlog) :
     port_(port), backlog_(backlog), current_context_(nullptr),
     outstanding_connections_(0) {}
@@ -37,6 +39,7 @@ Context *RdmaServer::Accept() {
     }
     if (event->event == RDMA_CM_EVENT_ESTABLISHED) {
       ++outstanding_connections_;
+      std::cerr << "New connection established" << std::endl;
       return current_context_;
     } else if (event->event == RDMA_CM_EVENT_DISCONNECTED) {
       --outstanding_connections_;
@@ -46,15 +49,20 @@ Context *RdmaServer::Accept() {
 }
 
 void RdmaServer::Stop() {
+  std::cerr << "Stopping server..." << std::endl;
   if (cm_id_ && outstanding_connections_ > 0) {
+    std::cerr << "rdma_disconnecting..." << std::endl;
     rdma_disconnect(cm_id_);
   }
   if (cm_id_) {
+    std::cerr << "rdma_destroy_id..." << std::endl;
     rdma_destroy_id(cm_id_);
   }
   if (event_channel_) {
+    std::cerr << "rdma_destroy_event_channel..." << std::endl;
     rdma_destroy_event_channel(event_channel_);
   }
+  std::cerr << "Server shutdown complete" << std::endl;
 }
 
 Status RdmaServer::OnAddressResolved(struct rdma_cm_id *id) {

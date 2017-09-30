@@ -1,6 +1,8 @@
 #include "rdma_communicator.h"
 #include "status.h"
 
+#include <iostream>
+
 #include "mysql_com.h"
 
 // 16MB
@@ -43,6 +45,7 @@ void RdmaCommunicator::OnWorkCompletion(Context *context, struct ibv_wc *wc) {
   }
   if (wc->opcode & IBV_WC_RECV) {
     size_t size = *(reinterpret_cast<size_t *>(context->recv_region));
+    std::cerr << "Response of size " << size << " received, pushing to the buffer" << std::endl;
     if (size == MAX_PACKET_LENGTH) {
       PostReceive(context);
     }

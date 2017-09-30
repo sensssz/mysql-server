@@ -1,5 +1,6 @@
 #include "spsc_ring_buffer.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
 
@@ -63,6 +64,7 @@ size_t SpscBufferRead(SpscRingBuffer *buffer, char *out_buffer, size_t size) {
 void SpscBufferWrite(SpscRingBuffer *buffer, const char *data, size_t size) {
   int64 write_loc = my_atomic_load64(&buffer->write_loc);
   while (SpscBufferDataSize(buffer) + size > buffer->buf_size) {
+    fprintf(stderr, "Waiting for space in the buffer...\n");
     // Left empty.
   }
   write_loc = WrapIfNecessary(buffer->buf_size, write_loc, sizeof(size));
@@ -70,6 +72,7 @@ void SpscBufferWrite(SpscRingBuffer *buffer, const char *data, size_t size) {
   write_loc = WrapIfNecessary(buffer->buf_size, write_loc, size);
   memcpy(buffer->buffer + write_loc, data, size);
   my_atomic_store64(&buffer->write_loc, write_loc + size);
+  fprintf(stderr, "Data written to buffer\n");
 }
 
 my_bool SpscBufferWriteAsync(SpscRingBuffer *buffer, const char *data, size_t size) {
