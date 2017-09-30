@@ -103,6 +103,7 @@ Status RdmaClient::OnAddressResolved(struct rdma_cm_id *id) {
     return status_or.status();
   }
   context_ = status_or.Take();
+  RETURN_IF_ERROR(PostReceive(context_));
   ERROR_IF_NON_ZERO(rdma_resolve_route(id, kTimeoutInMs));
 
   return Status::Ok();

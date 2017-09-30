@@ -47,17 +47,20 @@ size_t SpscBufferRead(SpscRingBuffer *buffer, char *out_buffer, size_t size) {
   size_t read_loc;
   size_t data_size;
   while (!SpscBufferHasData(buffer)) {
+    fprintf(stderr, "Waiting for incoming data...\n");
     // Left empty.
   }
   read_loc = (size_t) my_atomic_load64(&buffer->read_loc);
   read_loc = WrapIfNecessary(buffer->buf_size, read_loc, sizeof(data_size));
   read_loc = ReadValue(buffer->buffer, read_loc, &data_size);
   if (data_size > size) {
+    fprintf(stderr, "Data overflow\n");
     return 0;
   }
   read_loc = WrapIfNecessary(buffer->buf_size, read_loc, data_size);
   memcpy(out_buffer, buffer->buffer + read_loc, data_size);
   my_atomic_store64(&buffer->read_loc, (int64) read_loc);
+  fprintf(stderr, "Read %ul bytes of data\n", data_size);
   return data_size;
 }
 
