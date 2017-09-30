@@ -58,7 +58,7 @@ bool Rdma_socket_listener::setup_listener() {
 Channel_info* Rdma_socket_listener::listen_for_connection_event() {
   Context *context = server_.Accept();
   if (context != nullptr) {
-    return new Channel_info_rdma(server_.Accept());
+    return new Channel_info_rdma(context);
   } else {
     return nullptr;
   }
