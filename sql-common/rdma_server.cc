@@ -38,7 +38,7 @@ Context *RdmaServer::Accept() {
     if (event->event == RDMA_CM_EVENT_ESTABLISHED) {
       ++outstanding_connections_;
       return current_context_;
-    } else if (event->event = RDMA_CM_EVENT_DISCONNECTED) {
+    } else if (event->event == RDMA_CM_EVENT_DISCONNECTED) {
       --outstanding_connections_;
     }
   }

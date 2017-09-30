@@ -62,7 +62,6 @@ size_t SpscBufferRead(SpscRingBuffer *buffer, char *out_buffer, size_t size) {
 
 void SpscBufferWrite(SpscRingBuffer *buffer, const char *data, size_t size) {
   int64 write_loc = my_atomic_load64(&buffer->write_loc);
-  int64 read_loc_required = (write_loc + sizeof(size) + size) % buffer->buf_size;
   while (SpscBufferDataSize(buffer) + size > buffer->buf_size) {
     // Left empty.
   }
@@ -75,7 +74,6 @@ void SpscBufferWrite(SpscRingBuffer *buffer, const char *data, size_t size) {
 
 my_bool SpscBufferWriteAsync(SpscRingBuffer *buffer, const char *data, size_t size) {
   int64 write_loc = my_atomic_load64(&buffer->write_loc);
-  int64 read_loc_required = (write_loc + sizeof(size) + size) % buffer->buf_size;
   while (SpscBufferDataSize(buffer) + size > buffer->buf_size) {
     return FALSE;
   }
