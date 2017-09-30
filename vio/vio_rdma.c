@@ -2,7 +2,7 @@
 #include "vio_rdma.h"
 #include "context.h"
 
-#include <iostream>
+#include <stdio.h>
 
 #include "mysql_com.h"
 
@@ -34,10 +34,10 @@ static my_bool PostSend(Context *context, size_t size) {
     // Left empry.
   }
   if (ibv_post_send(context->queue_pair, &wr, &bad_wr) != 0) {
-    std::cerr << "PostSend fails" << std::endl;
+    fprintf(stderr, "PostSend fails\n");
     return FALSE;
   }
-  std::cerr << "PostSend successes" << std::endl;
+  fprintf(stderr, "PostSend successes\n");
   return TRUE;
 }
 
@@ -53,10 +53,10 @@ static my_bool PostReceive(Context *context) {
   sge.length = kMaxBufferSize;
   sge.lkey = context->recv_mr->lkey;
   if (ibv_post_recv(context->queue_pair, &wr, &bad_wr) != 0) {
-    std::cerr << "PostRecv fails" << std::endl;
+    fprintf(stderr, "PostRecv fails\n");
     return FALSE;
   }
-  std::cerr << "PostRecv successes, waiting for response" << std::endl;
+  fprintf(stderr, "PostRecv successes, waiting for response\n");
   return TRUE;
 }
 
