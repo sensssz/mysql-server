@@ -197,5 +197,5 @@ Status RdmaCommunicator::RegisterMemoryRegion(Context *context) {
 
 void RdmaCommunicator::DestroyConnection(void *context_void) {
   Context *context = reinterpret_cast<Context *>(context_void);
-  delete context;
+  DestroyContext(context);
 }

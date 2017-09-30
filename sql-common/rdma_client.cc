@@ -139,4 +139,6 @@ void RdmaDisconnect(Context *context) {
   memcpy(&event_copy, event, sizeof(*event));
   rdma_ack_cm_event(event);
   DestroyContext(context);
+  rdma_destroy_id(context->id);
+  rdma_destroy_event_channel(context->event_channel);
 }

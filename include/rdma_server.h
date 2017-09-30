@@ -23,6 +23,7 @@ private:
   int port_;
   int backlog_;
   Context *current_context_;
+  int outstanding_connections_;
 };
 
 #endif // RDMA_RDMA_SERVER_H_

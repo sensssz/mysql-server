@@ -1,7 +1,8 @@
 #include "rdma_server.h"
 
 RdmaServer::RdmaServer(int port, int backlog) :
-    port_(port), backlog_(backlog), current_context_(nullptr) {}
+    port_(port), backlog_(backlog), current_context_(nullptr),
+    outstanding_connections_(0) {}
 
 Status RdmaServer::Initialize() {
   struct sockaddr_in addr;
@@ -35,14 +36,25 @@ Context *RdmaServer::Accept() {
       return nullptr;
     }
     if (event->event == RDMA_CM_EVENT_ESTABLISHED) {
+      ++outstanding_connections_;
       return current_context_;
+    } else if (event->event = RDMA_CM_EVENT_DISCONNECTED) {
+      --outstanding_connections_;
     }
   }
   return nullptr;
 }
 
 void RdmaServer::Stop() {
-  rdma_disconnect(cm_id_);
+  if (cm_id_ && outstanding_connections_ > 0) {
+    rdma_disconnect(cm_id_);
+  }
+  if (cm_id_) {
+    rdma_destroy_id(cm_id_);
+  }
+  if (event_channel_) {
+    rdma_destroy_event_channel(event_channel_);
+  }
 }
 
 Status RdmaServer::OnAddressResolved(struct rdma_cm_id *id) {
