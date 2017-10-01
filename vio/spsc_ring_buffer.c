@@ -55,8 +55,8 @@ size_t SpscBufferRead(SpscRingBuffer *buffer, char *out_buffer, size_t size) {
   while (!SpscBufferHasData(buffer)) {
     // Left empty.
   }
-  read_loc = my_atomic_load64(&buffer->
-  write_loc = my_atomic_load64(&buffer->
+  read_loc = my_atomic_load64(&buffer->read_loc);
+  write_loc = my_atomic_load64(&buffer->write_loc);
   if (read_loc < write_loc) {
     size_left = write_loc - read_loc;
     read_size = min(size_left, size);
