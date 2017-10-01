@@ -52,40 +52,31 @@ size_t SpscBufferRead(SpscRingBuffer *buffer, char *out_buffer, size_t size) {
   int64 write_loc = 0;
   int64 size_left = 0;
   int64 read_size = 0;
-  fprintf(stderr, "Check data size\n");
   while (!SpscBufferHasData(buffer)) {
     // Left empty.
   }
-  fprintf(stderr, "Got data in the buffer\n");
-  read_loc = my_atomic_load64(&buffer->read_loc);
-  fprintf(stderr, "read_loc loaded\n");
-  write_loc = my_atomic_load64(&buffer->write_loc);
-  fprintf(stderr, "write_loc loaded\n");
+  read_loc = my_atomic_load64(&buffer->
+  write_loc = my_atomic_load64(&buffer->
   if (read_loc < write_loc) {
-    fprintf(stderr, "No need to wrap\n");
     size_left = write_loc - read_loc;
     read_size = min(size_left, size);
     memcpy(out_buffer, buffer->buffer + read_loc, read_size);
     my_atomic_store64(&buffer->read_loc, read_loc + read_size);
   } else {
-    fprintf(stderr, "Read the rest\n");
     size_left = (int64) buffer->buf_size - read_loc;
     read_size = min(size_left, size);
     memcpy(out_buffer, buffer->buffer + read_loc, read_size);
     size -= read_size;
     if (size > 0) {
       // Wrap to the start and read the rest
-      fprintf(stderr, "Wrap to the start\n");
       size = min(size, write_loc);
       memcpy(out_buffer + read_size, buffer->buffer, size);
       read_size += size;
       my_atomic_store64(&buffer->read_loc, size);
     } else {
-      fprintf(stderr, "All data already read\n");
       my_atomic_store64(&buffer->read_loc, read_loc + read_size);
     }
   }
-  fprintf(stderr, "Read %u bytes of data\n", read_size);
   return (size_t) read_size;
 }
 
@@ -97,7 +88,6 @@ void SpscBufferWrite(SpscRingBuffer *buffer, const char *data, size_t size) {
   }
   while (SpscBufferDataSize(buffer) + size > buffer->buf_size) {
     // Left empty.
-    fprintf(stderr, "Waiting for space in the buffer...\n");
   }
   if ((int64) size > size_left) {
     memcpy(buffer->buffer + write_loc, data, size_left);
@@ -107,7 +97,6 @@ void SpscBufferWrite(SpscRingBuffer *buffer, const char *data, size_t size) {
     memcpy(buffer->buffer + write_loc, data, size);
     my_atomic_store64(&buffer->write_loc, (int64) (write_loc + size));
   }
-  fprintf(stderr, "%u bytes of data written to buffer\n", size);
 }
 
 my_bool SpscBufferWriteAsync(SpscRingBuffer *buffer, const char *data, size_t size) {

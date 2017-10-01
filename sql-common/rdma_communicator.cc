@@ -2,12 +2,27 @@
 #include "status.h"
 
 #include <iostream>
+#include <sstream>
+
+#include <cctype>
 
 #include "mysql_com.h"
 
 // 16MB
 const int kMaxBufferSize = MAX_PACKET_LENGTH + sizeof(size_t);
 const int kQueueDepth = 2048;
+
+static void ShowBinaryData(const char *data, size_t len) {
+  std::stringstream ss;
+  for (size_t i = 0; i < len; i++) {
+    if (isprint(data[i])) {
+      ss << (char) data[i];
+    } else {
+      ss << '\\' << (int) data[i];
+    }
+  }
+  std::cerr << "Data is " << ss.str() << std::endl;
+}
 
 RdmaCommunicator::RdmaCommunicator() : cm_id_(nullptr), event_channel_(nullptr) {}
 
