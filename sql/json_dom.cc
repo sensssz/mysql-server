@@ -930,6 +930,7 @@ public:
   bool Double(double, bool is_int= false) { return seeing_scalar(); }
   bool String(const char*, SizeType, bool) { return seeing_scalar(); }
   bool Key(const char*, SizeType, bool) { return seeing_scalar(); }
+  bool RawNumber(const char* str, SizeType length, bool copy) { return seeing_scalar(); }
 };
 
 
