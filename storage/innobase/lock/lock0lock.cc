@@ -52,6 +52,7 @@ Created 5/7/1996 Heikki Tuuri
 #include <algorithm>
 #include <set>
 #include <vector>
+#include <deque>
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
@@ -80,6 +81,60 @@ std::vector<ulint> insert_time;
 std::vector<int> read_len;
 std::vector<int> write_len;
 timespec last_update = {0, 0};
+
+
+
+ulint
+calc_dep_size(
+    trx_t* trx)
+{
+    std::set<trx_t*> dep_set;
+    std::deque<trx_t*> front;
+    dep_set.insert(trx);
+    front.push_back(trx);
+
+    while (!front.empty())
+    {
+        trx_t* next_trx = front.front();
+        front.pop_front();
+
+        lock_t* lock;
+
+        for (lock = UT_LIST_GET_FIRST(next_trx->lock.trx_locks);
+             lock != NULL;
+             lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+            if (lock_get_type_low(lock) == LOCK_REC
+                && !lock_get_wait(lock)) {
+               ulint space = lock->un_member.rec_lock.space;
+               ulint page_no = lock->un_member.rec_lock.page_no;
+               ulint nbits = lock_rec_get_n_bits(lock);
+               hash_table_t* lock_hash = lock_hash_get(lock->type_mode);
+               ulint heap_no;
+
+               for (heap_no = 0; heap_no < nbits; heap_no++) {
+                   if (!lock_rec_get_nth_bit(lock, heap_no)) {
+                       continue;
+                   }
+                   
+                   lock_t* b_lock;
+                   for (b_lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
+                        b_lock != NULL;
+                        b_lock = lock_rec_get_next(heap_no, lock)) {
+                       if (dep_set.find(b_lock->trx) == dep_set.end())
+                       {
+                           dep_set.insert(b_lock->trx);
+                           front.push_back(b_lock->trx);
+                       }
+                   }
+               }
+            }
+        }
+    }
+
+    return dep_set.size();
+}
+
+
 
 /** Deadlock checker. */
 class DeadlockChecker {
