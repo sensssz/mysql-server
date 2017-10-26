@@ -83,6 +83,7 @@ std::vector<int> write_len;
 std::vector<int> est_dep_size;
 std::vector<int> real_dep_size;
 timespec last_update = {0, 0};
+std::vector<ulint> calc_dep_size_time;
 
 
 
@@ -98,6 +99,11 @@ ulint
 calc_dep_size(
     trx_t* trx)
 {
+	timespec		func_start;
+	timespec		func_end;
+
+	clock_gettime(CLOCK_REALTIME, &func_start);
+
     // std::cerr << trx << std::endl;
     std::set<trx_t*> dep_set;
     std::deque<trx_t*> front;
@@ -150,6 +156,10 @@ calc_dep_size(
     }
 
     // std::cerr << std::endl << std::endl;
+
+	clock_gettime(CLOCK_REALTIME, &func_end);
+	ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+	calc_dep_size_time.push_back(duration);
 
     return dep_set.size();
 }
@@ -2962,6 +2972,12 @@ ldsf_grant(
 	std::vector<lock_t *> granted_locks;	/* All granted lock */
 	std::vector<lock_t *> new_granted;		/* All locks granted in this schedule */
 
+
+	timespec		func_start;
+	timespec		func_end;
+	clock_gettime(CLOCK_REALTIME, &func_start);
+
+
 	i = 0;
 	sub_dep_size_total = 0;
 	add_dep_size_total = 0;
@@ -3104,6 +3120,10 @@ ldsf_grant(
 			update_dep_size(lock->trx, add_dep_size_total + dep_size_compsensate);
 		}
 	}
+
+	clock_gettime(CLOCK_REALTIME, &func_end);
+	ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+	exec_time.push_back(duration);
 }
 
 /*************************************************************//**
@@ -3129,11 +3149,11 @@ lock_rec_dequeue_from_page(
 	trx_lock_t*	trx_lock;
 	hash_table_t*	lock_hash;
 
-	clock_gettime(CLOCK_REALTIME, &func_start);
+	// clock_gettime(CLOCK_REALTIME, &func_start);
 
-	if (func_start.tv_sec - last_update.tv_sec >= 60) {
-		exec_time.clear();
-	}
+	// if (func_start.tv_sec - last_update.tv_sec >= 60) {
+	// 	exec_time.clear();
+	// }
 
 	ut_ad(lock_mutex_own());
 	ut_ad(lock_get_type_low(in_lock) == LOCK_REC);
@@ -3210,10 +3230,10 @@ lock_rec_dequeue_from_page(
 		}
 	}
 
-	clock_gettime(CLOCK_REALTIME, &func_end);
-	ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
-	exec_time.push_back(duration);
-	last_update = func_end;
+	// clock_gettime(CLOCK_REALTIME, &func_end);
+	// ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+	// exec_time.push_back(duration);
+	// last_update = func_end;
 }
 
 void
@@ -3258,6 +3278,13 @@ dump_log()
         dep_size_file << est_dep_size[i] << '\t' << real_dep_size[i] << std::endl;
     }
     dep_size_file.close();
+
+    std::ofstream calc_dep_size_file("latency/calc_dep_size_time");
+    for (size_t i = 0; i < calc_dep_size_time.size(); ++i)
+    {
+        calc_dep_size_file << calc_dep_size_time[i] << std::endl;
+    }
+    calc_dep_size_file.close();
 }
 
 /*************************************************************//**
