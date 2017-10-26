@@ -80,14 +80,25 @@ std::vector<ulint> exec_time;
 std::vector<ulint> insert_time;
 std::vector<int> read_len;
 std::vector<int> write_len;
+std::vector<int> est_dep_size;
+std::vector<int> real_dep_size;
 timespec last_update = {0, 0};
 
 
+
+static
+lock_t *
+lock_rec_get_first(
+    hash_table_t*   lock_hash,
+    ulint   space,
+    ulint   page_no,
+    ulint   heap_no);
 
 ulint
 calc_dep_size(
     trx_t* trx)
 {
+    // std::cerr << trx << std::endl;
     std::set<trx_t*> dep_set;
     std::deque<trx_t*> front;
     dep_set.insert(trx);
@@ -103,6 +114,7 @@ calc_dep_size(
         for (lock = UT_LIST_GET_FIRST(next_trx->lock.trx_locks);
              lock != NULL;
              lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+            // std::cerr << "(" << lock << ")" << std::endl;
             if (lock_get_type_low(lock) == LOCK_REC
                 && !lock_get_wait(lock)) {
                ulint space = lock->un_member.rec_lock.space;
@@ -119,17 +131,25 @@ calc_dep_size(
                    lock_t* b_lock;
                    for (b_lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
                         b_lock != NULL;
-                        b_lock = lock_rec_get_next(heap_no, lock)) {
+                        b_lock = lock_rec_get_next(heap_no, b_lock)) {
+                       // std::cerr << "\t(" << b_lock << ")" << std::endl;
+                       if (!lock_get_wait(b_lock))
+                       {
+                           continue;
+                       }
                        if (dep_set.find(b_lock->trx) == dep_set.end())
                        {
                            dep_set.insert(b_lock->trx);
                            front.push_back(b_lock->trx);
+                           // std::cerr << b_lock->trx << '\t';
                        }
                    }
                }
             }
         }
     }
+
+    // std::cerr << std::endl << std::endl;
 
     return dep_set.size();
 }
@@ -2959,8 +2979,12 @@ ldsf_grant(
 			wait_locks.push_back(lock);
 			if (lock_get_mode(lock) == LOCK_S) {
 				read_locks.push_back(lock);
+                est_dep_size.push_back(lock->trx->dep_size);
+                real_dep_size.push_back(calc_dep_size(lock->trx));
 			} else if (lock_get_mode(lock) == LOCK_X) {
 				write_locks.push_back(lock);
+                est_dep_size.push_back(lock->trx->dep_size);
+                real_dep_size.push_back(calc_dep_size(lock->trx));
 			} else {
                 fprintf(stderr, "\n Non-rw-locks \n");
 				non_rw_locks.push_back(lock);
@@ -3227,6 +3251,13 @@ dump_log()
         total_len_file << write_len[i] + read_len[i] << std::endl;
     }
     total_len_file.close();
+
+    std::ofstream dep_size_file("latency/dep_size");
+    for (size_t i = 0; i < est_dep_size.size(); ++i)
+    {
+        dep_size_file << est_dep_size[i] << '\t' << real_dep_size[i] << std::endl;
+    }
+    dep_size_file.close();
 }
 
 /*************************************************************//**
