@@ -52,6 +52,7 @@ Created 5/7/1996 Heikki Tuuri
 #include <algorithm>
 #include <set>
 #include <vector>
+#include <deque>
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
@@ -79,6 +80,7 @@ std::vector<ulint> exec_time;
 std::vector<ulint> insert_time;
 std::vector<int> read_len;
 std::vector<int> write_len;
+ulint max_c = 0;
 timespec last_update = {0, 0};
 
 /** Deadlock checker. */
@@ -1629,6 +1631,50 @@ reset_trx_size_updated()
 	}
 }
 
+static 
+ulint
+calc_c(trx_t* calc_trx)
+{
+    ulint space;
+    ulint page_no;
+    ulint heap_no;
+    hash_table_t* lock_hash;
+    lock_t* lock;
+    std::deque<trx_t*> q;
+    std::set<trx_t*> visited;
+    std::set<trx_t*> critical;
+    q.push_back(calc_trx);
+    visited.insert(calc_trx);
+    while (!q.empty())
+    {
+        trx_t* trx = q.front();
+        q.pop_front();
+        lock_t* wait_lock = trx->lock.wait_lock;
+        if (wait_lock == NULL)
+        {
+            critical.insert(trx);
+            continue;
+        }
+        space = wait_lock->un_member.rec_lock.space;
+        page_no = wait_lock->un_member.rec_lock.page_no;
+        heap_no = lock_rec_find_set_bit(wait_lock);
+        lock_hash = lock_hash_get(wait_lock->type_mode);
+        for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
+             lock != NULL;
+             lock = lock_rec_get_next(heap_no, lock)) {
+            if (!lock_get_wait(lock) && 
+                trx != lock->trx) {
+                if (visited.find(lock->trx) == visited.end())
+                {
+                    visited.insert(lock->trx);
+                    q.push_back(lock->trx);
+                }
+            }
+        }
+    }
+    return critical.size();
+}
+
 static
 void
 update_dep_size(
@@ -2120,6 +2166,9 @@ lock_rec_add_to_queue(
 	RecLock		rec_lock(index, block, heap_no, type_mode);
 
 	rec_lock.create(trx, caller_owns_trx_mutex, true);
+
+    ulint c = calc_c(trx);
+    if (c > max_c) max_c = c;
 
     clock_gettime(CLOCK_REALTIME, &end);
 	ulint duration = (end.tv_sec - start.tv_sec) * 1E9 + (end.tv_nsec - start.tv_nsec);
@@ -3184,6 +3233,10 @@ dump_log()
         total_len_file << write_len[i] + read_len[i] << std::endl;
     }
     total_len_file.close();
+
+    std::ofstream max_c_file("latency/max_c");
+    max_c_file << max_c << std::endl;
+    max_c_file.close();
 }
 
 /*************************************************************//**
