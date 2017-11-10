@@ -5,6 +5,6 @@
 
 class THD;
 
-std::map<THD*, int> ldsf_effsize;
+extern std::map<THD*, int> ldsf_effsize;
 
 #endif

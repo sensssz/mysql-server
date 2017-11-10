@@ -20,7 +20,6 @@
 #include "handler.h"                 // enum_schema_tables
 #include "mysqld_thd_manager.h"      // Find_THD_Impl
 #include "sql_class.h"               // THD
-#include "sql_global.h"
 
 class Comp_creator;
 class Item;

@@ -110,6 +110,7 @@
 
 #include "rpl_group_replication.h"
 #include <algorithm>
+#include "sql_global.h"
 using std::max;
 
 /**
