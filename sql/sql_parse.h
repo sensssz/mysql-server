@@ -20,6 +20,7 @@
 #include "handler.h"                 // enum_schema_tables
 #include "mysqld_thd_manager.h"      // Find_THD_Impl
 #include "sql_class.h"               // THD
+#include "sql_global.h"
 
 class Comp_creator;
 class Item;
@@ -34,7 +35,6 @@ union COM_DATA;
 typedef struct st_lex_user LEX_USER;
 typedef struct st_order ORDER;
 typedef class st_select_lex SELECT_LEX;
-
 
 extern "C" int test_if_data_home_dir(const char *dir);
 

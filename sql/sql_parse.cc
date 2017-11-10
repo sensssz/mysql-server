@@ -1434,6 +1434,13 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     if (alloc_query(thd, com_data->com_query.query,
                     com_data->com_query.length))
       break;					// fatal error is set
+
+    int effs = 1;
+    char* query = const_cast<char*>(thd->query().str);
+    if (strncmp(query, "select *", 8) == 0) effs = 2;
+    if (strncmp(query, "SELECT *", 8) == 0) effs = 2;
+    ldsf_effsize[thd] = effs;
+
     MYSQL_QUERY_START(const_cast<char*>(thd->query().str), thd->thread_id(),
                       (char *) (thd->db().str ? thd->db().str : ""),
                       (char *) thd->security_context()->priv_user().str,

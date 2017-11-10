@@ -54,6 +54,8 @@ Created 5/7/1996 Heikki Tuuri
 #include <vector>
 #include <deque>
 
+#include "sql_global.h"
+
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
 
@@ -1755,7 +1757,7 @@ update_dep_size(
 			 lock = lock_rec_get_next(heap_no, lock)) {
 			if (!lock_get_wait(lock)
 				&& in_lock->trx != lock->trx) {
-				update_dep_size(lock->trx, in_lock->trx->dep_size + 1);
+				update_dep_size(lock->trx, in_lock->trx->dep_size + ldsf_effsize[in_lock->trx->mysql_thd]);
 			}
 		}
 	} else {
@@ -1765,7 +1767,7 @@ update_dep_size(
 			 lock = lock_rec_get_next(heap_no, lock)) {
 			if (lock_get_wait(lock)
 				&& in_lock->trx != lock->trx) {
-				total_size_delta += lock->trx->dep_size + 1;
+				total_size_delta += lock->trx->dep_size + ldsf_effsize[lock->trx->mysql_thd];
 			}
 		}
 		update_dep_size(in_lock->trx, total_size_delta);
@@ -2167,8 +2169,8 @@ lock_rec_add_to_queue(
 
 	rec_lock.create(trx, caller_owns_trx_mutex, true);
 
-    ulint c = calc_c(trx);
-    if (c > max_c) max_c = c;
+    // ulint c = calc_c(trx);
+    // if (c > max_c) max_c = c;
 
     clock_gettime(CLOCK_REALTIME, &end);
 	ulint duration = (end.tv_sec - start.tv_sec) * 1E9 + (end.tv_nsec - start.tv_nsec);

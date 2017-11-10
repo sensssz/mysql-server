@@ -49,6 +49,7 @@
 #include <mysql/psi/mysql_statement.h>
 
 #include <memory>
+#include <map>
 #include "mysql/thread_type.h"
 
 class Reprepare_observer;
