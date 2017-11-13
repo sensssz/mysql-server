@@ -82,6 +82,7 @@ std::vector<ulint> exec_time;
 std::vector<ulint> insert_time;
 std::vector<int> read_len;
 std::vector<int> write_len;
+std::vector<int> effsize;
 ulint max_c = 0;
 timespec last_update = {0, 0};
 
@@ -1543,10 +1544,12 @@ has_higher_priority(
 	if (trx_is_high_priority(lock2->trx)) {
 		return false;
 	}
-	if (lock1->trx->dep_size == lock2->trx->dep_size) {
+    double x1 = lock1->trx->dep_size / (double) ldsf_effsize[lock1->trx->mysql_thd]; 
+    double x2 = lock2->trx->dep_size / (double) ldsf_effsize[lock2->trx->mysql_thd];
+	if (x1 == x2) {
 		return lock1->trx->start_time_micro < lock2->trx->start_time_micro;
 	}
-	return lock1->trx->dep_size > lock2->trx->dep_size;
+	return x1 > x2;
 }
 
 static
@@ -1757,7 +1760,7 @@ update_dep_size(
 			 lock = lock_rec_get_next(heap_no, lock)) {
 			if (!lock_get_wait(lock)
 				&& in_lock->trx != lock->trx) {
-				update_dep_size(lock->trx, in_lock->trx->dep_size + ldsf_effsize[in_lock->trx->mysql_thd]);
+				update_dep_size(lock->trx, in_lock->trx->dep_size + 1);
 			}
 		}
 	} else {
@@ -1767,7 +1770,7 @@ update_dep_size(
 			 lock = lock_rec_get_next(heap_no, lock)) {
 			if (lock_get_wait(lock)
 				&& in_lock->trx != lock->trx) {
-				total_size_delta += lock->trx->dep_size + ldsf_effsize[lock->trx->mysql_thd];
+				total_size_delta += lock->trx->dep_size + 1;
 			}
 		}
 		update_dep_size(in_lock->trx, total_size_delta);
@@ -2833,6 +2836,7 @@ vats_grant(
 		if (!lock_rec_has_to_wait_granted(lock, granted_locks)
 			&& !lock_rec_has_to_wait_granted(lock, new_granted)) {
 			lock_grant(lock);
+            effsize.push_back(ldsf_effsize[lock->trx->mysql_thd]);
 			HASH_DELETE(lock_t, hash, lock_hash,
 						rec_fold, lock);
 			lock_rec_insert_to_head(lock_hash, lock, rec_fold);
@@ -3235,6 +3239,13 @@ dump_log()
         total_len_file << write_len[i] + read_len[i] << std::endl;
     }
     total_len_file.close();
+
+    std::ofstream effsize_file("latency/effsize");
+    for (size_t i = 0; i < effsize.size(); ++i)
+    {
+        effsize_file << effsize[i] << std::endl;
+    }
+    effsize_file.close();
 
     std::ofstream max_c_file("latency/max_c");
     max_c_file << max_c << std::endl;
