@@ -273,42 +273,42 @@ void TraceTool::set_query(const char *new_query)
   // Look at the first query of a transaction
   if (new_transaction)
   {
-      std::cerr << new_query << endl;
+      // std::cerr << new_query << endl;
     if (strncmp(new_query, NEW_ORDER_MARKER, NEW_ORDER_LENGTH) == 0)
     {
       type = NEW_ORDER;
       ++num_trx_per_type[0];
-      std::cerr << "NEWORDER" << endl;
+      // std::cerr << "NEWORDER" << endl;
     }
     else if (strncmp(new_query, PAYMENT_MARKER, PAYMENT_LENGTH) == 0)
     {
       type = PAYMENT;
       ++num_trx_per_type[1];
-      std::cerr << "PAYMENT" << endl;
+      // std::cerr << "PAYMENT" << endl;
     }
     else if (strncmp(new_query, ORDER_STATUS_MARKER, ORDER_STATUS_LENGTH) == 0)
     {
       type = ORDER_STATUS;
       ++num_trx_per_type[2];
-      std::cerr << "ORDERSTATUS" << endl;
+      // std::cerr << "ORDERSTATUS" << endl;
     }
     else if (strncmp(new_query, DELIVERY_MARKER, DELIVERY_LENGTH) == 0)
     {
       type = DELIVERY;
       ++num_trx_per_type[3];
-      std::cerr << "DELIVERY" << endl;
+      // std::cerr << "DELIVERY" << endl;
     }
     else if (strncmp(new_query, STOCK_LEVEL_MARKER, STOCK_LEVEL_LENGTH) == 0)
     {
       type = STOCK_LEVEL;
       ++num_trx_per_type[4];
-      std::cerr << "STOCKLEVEL" << endl;
+      // std::cerr << "STOCKLEVEL" << endl;
     }
     else
     {
       type = NONE;
       commit_successful = false;
-      std::cerr << "NONE" << endl;
+      // std::cerr << "NONE" << endl;
 //      type = NEW_ORDER;
     }
     
