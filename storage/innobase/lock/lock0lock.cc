@@ -53,6 +53,7 @@ Created 5/7/1996 Heikki Tuuri
 #include <set>
 #include <vector>
 #include <deque>
+#include "trace_tool.h"
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
@@ -1811,6 +1812,30 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 		update_dep_size(lock, lock_rec_find_set_bit(lock), false);
 	}
 
+    int tp = -1;
+    switch(TraceTool::get_instance()->type)
+    {
+        case NEW_ORDER:
+            tp = 0;
+            break;
+        case PAYMENT:
+            tp = 1;
+            break;
+        case ORDER_STATUS:
+            tp = 2;
+            break;
+        case DELIVERY:
+            tp = 3;
+            break;
+        case STOCK_LEVEL:
+            tp = 4;
+            break;
+    }
+    if (tp >= 0)
+    {
+        TraceTool::get_instance()->num_locks_per_type[tp]++;
+    }
+
     clock_gettime(CLOCK_REALTIME, &end);
 	ulint duration = (end.tv_sec - start.tv_sec) * 1E9 + (end.tv_nsec - start.tv_nsec);
     insert_time.push_back(duration);
@@ -3237,6 +3262,13 @@ dump_log()
     std::ofstream max_c_file("latency/max_c");
     max_c_file << max_c << std::endl;
     max_c_file.close();
+
+    std::ofstream lock_per_type_file("latency/lock_per_type");
+    for (int i = 0; i < 5; ++i)
+    {
+        lock_per_type_file << TraceTool::get_instance()->num_locks_per_type[i] / (double) (TraceTool::get_instance()->num_trx_per_type[i]);
+    }
+    lock_per_type_file.close();
 }
 
 /*************************************************************//**
