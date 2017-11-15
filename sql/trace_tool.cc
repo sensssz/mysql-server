@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cassert>
 #include <unistd.h>
+#include <iostream>
 
 #define NUM_CORES 2
 #define TARGET_PATH_COUNT 42
@@ -16,7 +17,8 @@
 #define LATENCY
 #define MONITOR
 
-#define NEW_ORDER_MARKER "SELECT C_DISCOUNT, C_LAST, C_CREDIT, W_TAX  FROM CUSTOMER, WAREHOUSE WHERE"
+//#define NEW_ORDER_MARKER "SELECT C_DISCOUNT, C_LAST, C_CREDIT, W_TAX  FROM CUSTOMER, WAREHOUSE WHERE"
+#define NEW_ORDER_MARKER "SELECT W_TAX FROM"
 #define PAYMENT_MARKER "UPDATE WAREHOUSE SET W_YTD = W_YTD"
 #define ORDER_STATUS_MARKER "SELECT C_FIRST, C_MIDDLE"
 #define DELIVERY_MARKER "SELECT NO_O_ID FROM NEW_ORDER WHERE NO_D_ID ="
@@ -51,6 +53,8 @@ __thread bool TraceTool::commit_successful = true;
 __thread bool TraceTool::new_transaction = true;
 __thread timespec TraceTool::trans_start;
 __thread transaction_type TraceTool::type = NONE;
+int TraceTool::num_locks_per_type[5] = {0,0,0,0,0};
+int TraceTool::num_trx_per_type[5] = {0,0,0,0,0};
 
 long TraceTool::num_trans[TRX_TYPES] = {0};
 double TraceTool::mean_latency[TRX_TYPES] = {0};
@@ -70,9 +74,6 @@ static __thread timespec function_end;
 static __thread timespec call_start;
 static __thread timespec call_end;
 #endif
-
-int TraceTool::num_locks_per_type[5];
-int TraceTool::num_trx_per_type[5];
 
 void TRACE_FUNCTION_START()
 {
@@ -272,35 +273,42 @@ void TraceTool::set_query(const char *new_query)
   // Look at the first query of a transaction
   if (new_transaction)
   {
+      std::cerr << new_query << endl;
     if (strncmp(new_query, NEW_ORDER_MARKER, NEW_ORDER_LENGTH) == 0)
     {
       type = NEW_ORDER;
       ++num_trx_per_type[0];
+      std::cerr << "NEWORDER" << endl;
     }
     else if (strncmp(new_query, PAYMENT_MARKER, PAYMENT_LENGTH) == 0)
     {
       type = PAYMENT;
       ++num_trx_per_type[1];
+      std::cerr << "PAYMENT" << endl;
     }
     else if (strncmp(new_query, ORDER_STATUS_MARKER, ORDER_STATUS_LENGTH) == 0)
     {
       type = ORDER_STATUS;
       ++num_trx_per_type[2];
+      std::cerr << "ORDERSTATUS" << endl;
     }
     else if (strncmp(new_query, DELIVERY_MARKER, DELIVERY_LENGTH) == 0)
     {
       type = DELIVERY;
       ++num_trx_per_type[3];
+      std::cerr << "DELIVERY" << endl;
     }
     else if (strncmp(new_query, STOCK_LEVEL_MARKER, STOCK_LEVEL_LENGTH) == 0)
     {
       type = STOCK_LEVEL;
       ++num_trx_per_type[4];
+      std::cerr << "STOCKLEVEL" << endl;
     }
     else
     {
       type = NONE;
       commit_successful = false;
+      std::cerr << "NONE" << endl;
 //      type = NEW_ORDER;
     }
     
