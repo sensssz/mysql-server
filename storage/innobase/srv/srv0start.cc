@@ -2768,6 +2768,11 @@ innobase_shutdown_for_mysql(void)
 
 	srv_was_started = FALSE;
 	srv_start_has_been_called = FALSE;
+
+    for (int i = 0; i < 5; ++i)
+    {
+        std::cerr << TraceTool::get_instance()->num_lock_per_type[i] << ' ' << TraceTool::get_instance()->num_trx_per_type[i] << std::endl;
+    }
     
     delete TraceTool::get_instance();
 

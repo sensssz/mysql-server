@@ -105,6 +105,10 @@ public:
     static long num_trans[TRX_TYPES];       /*!< Number of successfully submitted transactions. */
     static double mean_latency[TRX_TYPES];  /*!< Mean of total wait time of successfully committed
                                              transactions*/
+
+    static int num_trx_per_type[5];
+    static int num_lock_per_type[5];
+
     static pthread_mutex_t var_mutex;
     
     list<long> num_read_locks;

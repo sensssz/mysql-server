@@ -1818,6 +1818,28 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
     lock->granted_time = TraceTool::get_time();
   }
 
+  int tp = -1;
+  switch (TraceTool::get_instance()->type)
+  {
+      case NEW_ORDER:
+          tp = 0;
+          break;
+      case PAYMENT:
+          tp = 1;
+          break;
+      case ORDER_STATUS:
+          tp = 2;
+          break;
+      case DELIVERY:
+          tp = 3;
+          break;
+      case STOCK_LEVEL:
+          tp = 4;
+          break;
+  }
+  if (tp >= 0)
+      TraceTool::get_instance()->num_lock_per_type[tp]++;
+
 	UT_LIST_ADD_LAST(lock->trx->lock.trx_locks, lock);
 }
 
