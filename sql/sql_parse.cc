@@ -1436,10 +1436,10 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
                     com_data->com_query.length))
       break;					// fatal error is set
 
-    int effs = 1;
+    int effs = 2;
     char* query = const_cast<char*>(thd->query().str);
-    if (strncmp(query, "select *", 8) == 0) effs = 2;
-    if (strncmp(query, "SELECT *", 8) == 0) effs = 2;
+    if (strncmp(query, "select *", 8) == 0) effs = 1;
+    if (strncmp(query, "SELECT *", 8) == 0) effs = 1;
     ldsf_effsize[thd] = effs;
 
     MYSQL_QUERY_START(const_cast<char*>(thd->query().str), thd->thread_id(),
