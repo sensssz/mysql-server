@@ -53,7 +53,7 @@ Created 5/7/1996 Heikki Tuuri
 #include <set>
 #include <vector>
 #include <deque>
-#include "trace_tool.h"
+#include <trace_tool.h>
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
