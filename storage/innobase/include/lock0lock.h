@@ -64,7 +64,7 @@ enum innodb_lock_schedule_algorithm_t {
 extern ulong innodb_lock_schedule_algorithm;
 extern ulong innodb_ldsf_chunk_size;
 
-extern std::vector<ulint> exec_time;
+extern std::vector<long long> exec_time;
 extern struct timespec last_update;
 
 void

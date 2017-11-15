@@ -76,7 +76,7 @@ static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
 typedef struct timespec timespec;
 
-std::vector<ulint> exec_time;
+std::vector<long long> exec_time;
 std::vector<ulint> insert_time;
 std::vector<int> read_len;
 std::vector<int> write_len;
@@ -85,7 +85,13 @@ std::vector<int> real_dep_size;
 timespec last_update = {0, 0};
 std::vector<ulint> calc_dep_size_time;
 
-
+static
+double
+ldsf_finish_time(
+	int chunk_size)
+{
+	return 1 * log2(chunk_size + 1);
+}
 
 static
 lock_t *
@@ -95,7 +101,7 @@ lock_rec_get_first(
     ulint   page_no,
     ulint   heap_no);
 
-ulint
+std::set<trx_t*>
 calc_dep_size(
     trx_t* trx)
 {
@@ -161,9 +167,57 @@ calc_dep_size(
 	ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
 	calc_dep_size_time.push_back(duration);
 
-    return dep_set.size();
+    return dep_set;
 }
 
+
+void
+dfs(std::vector<lock_t*>& current,
+    std::vector<lock_t*>& best,
+    double& best_speed,
+    std::vector<lock_t*>& read,
+    int depth)
+{
+    if (depth < read.size())
+    {
+        dfs(current, best, best_speed, read, depth + 1);
+        current.push_back(read[depth]);
+        dfs(current, best, best_speed, read, depth + 1);
+        current.pop_back();
+    }
+    else
+    {
+        if (current.empty())
+            return;
+        std::set<trx_t*> dep_set;
+        for (int i = 0; i < current.size(); ++i)
+        {
+            std::set<trx_t*> ds = calc_dep_size(current[i]->trx);
+            for (std::set<trx_t*>::iterator itr = ds.begin(); itr != ds.end(); ++itr)
+            {
+                dep_set.insert(*itr);
+            }
+        }
+        double speed = dep_set.size() / ldsf_finish_time(current.size());
+        if (speed > best_speed)
+        {
+            best_speed = speed;
+            best = current;
+        }
+    }
+}
+
+std::vector<lock_t*>
+calc_best(std::vector<lock_t*>& read, double& speed)
+{
+    std::vector<lock_t*> best;
+    speed = 0.;
+    if (read.empty())
+        return best;
+    std::vector<lock_t*> current;
+    dfs(current, best, speed, read, 0);
+    return best;
+}
 
 
 /** Deadlock checker. */
@@ -2933,14 +2987,6 @@ lock_rec_find_max_dep_size(
 }
 
 static
-double
-ldsf_finish_time(
-	int chunk_size)
-{
-	return 1 * log2(chunk_size + 1);
-}
-
-static
 void
 ldsf_grant(
 	hash_table_t *lock_hash,
@@ -2996,11 +3042,11 @@ ldsf_grant(
 			if (lock_get_mode(lock) == LOCK_S) {
 				read_locks.push_back(lock);
                 est_dep_size.push_back(lock->trx->dep_size);
-                real_dep_size.push_back(calc_dep_size(lock->trx));
+                real_dep_size.push_back(calc_dep_size(lock->trx).size());
 			} else if (lock_get_mode(lock) == LOCK_X) {
 				write_locks.push_back(lock);
                 est_dep_size.push_back(lock->trx->dep_size);
-                real_dep_size.push_back(calc_dep_size(lock->trx));
+                real_dep_size.push_back(calc_dep_size(lock->trx).size());
 			} else {
                 fprintf(stderr, "\n Non-rw-locks \n");
 				non_rw_locks.push_back(lock);
@@ -3012,32 +3058,34 @@ ldsf_grant(
 	// Calculate their estimated cost.
 	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
     read_len.push_back(read_locks.size());
-	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
-	read_dep_size_total = 0;
-	for (i = 1; i < actual_chunk_size; ++i) {
-		lock = read_locks[i];
-		read_dep_size_total += lock->trx->dep_size;
-	}
+    double speed = 0.;
+    std::vector<lock_t*> to_schedule = calc_best(read_locks, speed);
+	// actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
+	// read_dep_size_total = 0;
+	// for (i = 1; i < actual_chunk_size; ++i) {
+	// 	lock = read_locks[i];
+	// 	read_dep_size_total += lock->trx->dep_size;
+	// }
 	write_lock = lock_rec_find_max_dep_size(write_locks);
     write_len.push_back(write_locks.size());
 	write_dep_size = write_lock ? write_lock->trx->dep_size : 0;
 
 	// 1 means selecting read chunk and -1 means selecting write lock
 	select_result = 0;
-	if (actual_chunk_size > 0
+	if (speed > 0.
 			&& write_lock != NULL) {
-		write_lock_cost = read_dep_size_total + actual_chunk_size;
-		read_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
+		write_lock_cost = speed;
+		read_lock_cost = write_dep_size + 1;
 		select_result = (read_lock_cost < write_lock_cost) ? 1 : -1;
 	} else if (write_lock != NULL) {
 		select_result = -1;
-	} else if (actual_chunk_size > 0) {
+	} else if (speed > 0) {
 		select_result = 1;
 	}
 
 	if (select_result == 1) {
-		for (i = 0; i < actual_chunk_size; ++i) {
-			lock = read_locks[i];
+		for (i = 0; i < to_schedule.size(); ++i) {
+			lock = to_schedule[i];
 			if (!lock_rec_has_to_wait_granted(lock, granted_locks)) {
 				lock_grant(lock);
 				HASH_DELETE(lock_t, hash, lock_hash,
@@ -3122,8 +3170,9 @@ ldsf_grant(
 	}
 
 	clock_gettime(CLOCK_REALTIME, &func_end);
-	ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+	long long duration = (func_end.tv_sec - func_start.tv_sec) * 1E9l + (func_end.tv_nsec - func_start.tv_nsec);
 	exec_time.push_back(duration);
+    // std::cerr << duration << std::endl;
 }
 
 /*************************************************************//**
