@@ -1436,7 +1436,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
                     com_data->com_query.length))
       break;					// fatal error is set
 
-    int effs = 2;
+    int effs = 3;
     char* query = const_cast<char*>(thd->query().str);
     if (strncmp(query, "select *", 8) == 0) effs = 1;
     if (strncmp(query, "SELECT *", 8) == 0) effs = 1;
