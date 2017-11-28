@@ -981,6 +981,8 @@ struct lock_sys_t {
 	/** Marker value before trx_t::age. */
 	uint64_t	mark_age_updated;
 
+	bool schedule_was_fcfs;
+
 #ifdef UNIV_DEBUG
 	/** Lock timestamp counter */
 	uint64_t	m_seq;

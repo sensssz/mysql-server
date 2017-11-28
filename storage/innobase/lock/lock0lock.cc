@@ -466,6 +466,10 @@ lock_sys_create(
 	lock_sys->prdt_hash = hash_create(n_cells);
 	lock_sys->prdt_page_hash = hash_create(n_cells);
 
+	// We don't have to reset weights even if start with FCFS and
+	// switch to VATS later, so set this to false.
+	lock_sys->schedule_was_fcfs = false;
+
 	if (!srv_read_only_mode) {
 		lock_latest_err_file = os_file_create_tmpfile(NULL);
 		ut_a(lock_latest_err_file);
@@ -1398,6 +1402,30 @@ lock_use_fcfs(const trx_t* trx)
 
 	return(thd_is_replication_slave_thread(trx->mysql_thd)
 	       || lock_sys->n_waiting < LOCK_VATS_THRESHOLD);
+}
+
+/** Reset all transactions' ages if necessary (when we go from FCFS to VATS)
+ @param[in]	trx		Transaction to check */
+static
+void
+reset_age_if_necessary(const trx_t* in_trx)
+{
+	ut_ad(trx_sys_mutex_own());
+
+	if (lock_sys->schedule_was_fcfs &&
+			!lock_use_fcfs(in_trx)) {
+		trx_t *trx;
+		for (trx = UT_LIST_GET_FIRST(trx_sys->rw_trx_list);
+				 trx != NULL;
+				 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
+			trx->age = 0;
+		}
+		for (trx = UT_LIST_GET_FIRST(trx_sys->mysql_trx_list);
+				 trx != NULL;
+				 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
+			trx->age = 0;
+		}
+	}
 }
 
 /** Insert lock record to the head of the queue.
@@ -2904,7 +2932,7 @@ lock_rec_dequeue_from_page(lock_t* in_lock, bool use_fcfs)
 		}
 
 	} else {
-
+		reset_age_if_necessary(in_lock->trx);
 		for (ulint heap_no = 0;
 		     heap_no < lock_rec_get_n_bits(in_lock);
 		     ++heap_no) {
@@ -2914,6 +2942,7 @@ lock_rec_dequeue_from_page(lock_t* in_lock, bool use_fcfs)
 			}
 		}
 	}
+	lock_sys->schedule_was_fcfs = use_fcfs || lock_use_fcfs(in_lock->trx);
 }
 
 /** Removes a record lock request, waiting or granted, from the queue.
