@@ -77,12 +77,157 @@ static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
 typedef struct timespec timespec;
 
+ulint max_c = 0;
 std::vector<ulint> exec_time;
 std::vector<ulint> insert_time;
 std::vector<int> read_len;
 std::vector<int> write_len;
-ulint max_c = 0;
+std::vector<int> est_dep_size;
+std::vector<int> real_dep_size;
 timespec last_update = {0, 0};
+std::vector<ulint> calc_dep_size_time;
+
+static
+lock_t *
+lock_rec_get_first(
+    hash_table_t*   lock_hash,
+    ulint   space,
+    ulint   page_no,
+    ulint   heap_no);
+
+static
+double
+ldsf_finish_time(
+	int chunk_size)
+{
+	return 1 * log2(chunk_size + 1);
+}
+
+std::set<trx_t*>
+calc_dep_size(
+    trx_t* trx)
+{
+	timespec		func_start;
+	timespec		func_end;
+
+	clock_gettime(CLOCK_REALTIME, &func_start);
+
+    // std::cerr << trx << std::endl;
+    std::set<trx_t*> dep_set;
+    std::deque<trx_t*> front;
+    dep_set.insert(trx);
+    front.push_back(trx);
+
+    while (!front.empty())
+    {
+        trx_t* next_trx = front.front();
+        front.pop_front();
+
+        lock_t* lock;
+
+        for (lock = UT_LIST_GET_FIRST(next_trx->lock.trx_locks);
+             lock != NULL;
+             lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+            // std::cerr << "(" << lock << ")" << std::endl;
+            if (lock_get_type_low(lock) == LOCK_REC
+                && !lock_get_wait(lock)) {
+               ulint space = lock->un_member.rec_lock.space;
+               ulint page_no = lock->un_member.rec_lock.page_no;
+               ulint nbits = lock_rec_get_n_bits(lock);
+               hash_table_t* lock_hash = lock_hash_get(lock->type_mode);
+               ulint heap_no;
+
+               for (heap_no = 0; heap_no < nbits; heap_no++) {
+                   if (!lock_rec_get_nth_bit(lock, heap_no)) {
+                       continue;
+                   }
+                   
+                   lock_t* b_lock;
+                   for (b_lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
+                        b_lock != NULL;
+                        b_lock = lock_rec_get_next(heap_no, b_lock)) {
+                       // std::cerr << "\t(" << b_lock << ")" << std::endl;
+                       if (!lock_get_wait(b_lock))
+                       {
+                           continue;
+                       }
+                       if (dep_set.find(b_lock->trx) == dep_set.end())
+                       {
+                           dep_set.insert(b_lock->trx);
+                           front.push_back(b_lock->trx);
+                           // std::cerr << b_lock->trx << '\t';
+                       }
+                   }
+               }
+            }
+        }
+    }
+
+    // std::cerr << std::endl << std::endl;
+
+	clock_gettime(CLOCK_REALTIME, &func_end);
+	ulint duration = (func_end.tv_sec - func_start.tv_sec) * 1E9 + (func_end.tv_nsec - func_start.tv_nsec);
+	calc_dep_size_time.push_back(duration);
+
+    return dep_set;
+}
+
+
+void
+dfs(std::vector<lock_t*>& current,
+    std::vector<lock_t*>& best,
+    double& best_speed,
+    std::vector<lock_t*>& read,
+    int depth)
+{
+    if (depth < read.size())
+    {
+        dfs(current, best, best_speed, read, depth + 1);
+        current.push_back(read[depth]);
+        dfs(current, best, best_speed, read, depth + 1);
+        current.pop_back();
+    }
+    else
+    {
+        if (current.empty())
+            return;
+        std::set<trx_t*> dep_set;
+        for (int i = 0; i < current.size(); ++i)
+        {
+            std::set<trx_t*> ds = calc_dep_size(current[i]->trx);
+            for (std::set<trx_t*>::iterator itr = ds.begin(); itr != ds.end(); ++itr)
+            {
+                dep_set.insert(*itr);
+            }
+        }
+        double speed = dep_set.size() / ldsf_finish_time(current.size());
+        if (speed > best_speed)
+        {
+            best_speed = speed;
+            best = current;
+        }
+    }
+}
+
+std::vector<lock_t*>
+calc_best(std::vector<lock_t*>& read, double& speed)
+{
+    std::vector<lock_t*> best;
+    speed = 0.;
+    if (read.empty())
+        return best;
+    std::vector<lock_t*> current;
+    dfs(current, best, speed, read, 0);
+    return best;
+}
+
+int
+get_trx_dep_size(trx_t *trx)
+{
+    auto dep_set = calc_dep_size(trx);
+    return static_cast<int>(dep_set.size());
+}
+
 
 /** Deadlock checker. */
 class DeadlockChecker {
@@ -1615,23 +1760,6 @@ lock_rec_insert_to_head(
 	}
 }
 
-static
-void
-reset_trx_size_updated()
-{
-	trx_t *trx;
-	for (trx = UT_LIST_GET_FIRST(trx_sys->rw_trx_list);
-		 trx != NULL;
-		 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
-		trx->size_updated = false;
-	}
-	for (trx = UT_LIST_GET_FIRST(trx_sys->mysql_trx_list);
-		 trx != NULL;
-		 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
-		trx->size_updated = false;
-	}
-}
-
 static 
 ulint
 calc_c(trx_t* calc_trx)
@@ -1674,6 +1802,68 @@ calc_c(trx_t* calc_trx)
         }
     }
     return critical.size();
+}
+
+static
+void
+reset_trx_size_updated()
+{
+	trx_t *trx;
+	for (trx = UT_LIST_GET_FIRST(trx_sys->rw_trx_list);
+		 trx != NULL;
+		 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
+		trx->size_updated = false;
+	}
+	for (trx = UT_LIST_GET_FIRST(trx_sys->mysql_trx_list);
+		 trx != NULL;
+		 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
+		trx->size_updated = false;
+	}
+}
+
+static
+void
+update_dep_size(trx_t *trx, long depth=1)
+{
+	ulint   space;
+	ulint   page_no;
+	ulint   heap_no;
+	lock_t *lock;
+	lock_t *wait_lock;
+	hash_table_t *lock_hash;
+	if ((!use_vats(trx)
+			&& !use_ldsf(trx))
+			|| trx->size_updated) {
+		return;
+	}
+
+	trx->size_updated = true;
+    trx->dep_size = get_trx_dep_size(trx);
+
+	wait_lock = trx->lock.wait_lock;
+	if (trx->state != TRX_STATE_ACTIVE
+		|| wait_lock == NULL) {
+		if (depth == 1) {
+			reset_trx_size_updated();
+		}
+		return;
+	}
+	space = wait_lock->un_member.rec_lock.space;
+	page_no = wait_lock->un_member.rec_lock.page_no;
+	heap_no = lock_rec_find_set_bit(wait_lock);
+	lock_hash = lock_hash_get(wait_lock->type_mode);
+	for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
+		 lock != NULL;
+		 lock = lock_rec_get_next(heap_no, lock)) {
+		if (!lock_get_wait(lock)
+			&& trx != lock->trx) {
+			update_dep_size(lock->trx);
+		}
+	}
+
+    if (depth == 1) {
+        reset_trx_size_updated();
+    }
 }
 
 static
@@ -1756,10 +1946,11 @@ update_dep_size(
 			 lock = lock_rec_get_next(heap_no, lock)) {
 			if (!lock_get_wait(lock)
 				&& in_lock->trx != lock->trx) {
-				update_dep_size(lock->trx, in_lock->trx->dep_size + 1);
+				update_dep_size(lock->trx);
 			}
 		}
 	} else {
+        /*
 		total_size_delta = 0;
 		for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
 			 lock != NULL;
@@ -1769,7 +1960,8 @@ update_dep_size(
 				total_size_delta += lock->trx->dep_size + 1;
 			}
 		}
-		update_dep_size(in_lock->trx, total_size_delta);
+        */
+		update_dep_size(in_lock->trx);
 	}
 }
 
@@ -2870,6 +3062,7 @@ vats_grant(
 	}
 	for (i = 0; i < granted_locks.size(); ++i) {
 		lock = granted_locks[i];
+        /*
 		dep_size_compsensate = 0;
 		for (j = 0; j < new_granted.size(); ++j) {
 			new_granted_lock = new_granted[j];
@@ -2877,12 +3070,15 @@ vats_grant(
 				dep_size_compsensate += lock->trx->dep_size + 1;
 			}
 		}
+        */
 		if (lock->trx != released_lock->trx) {
-			update_dep_size(lock->trx, sub_dep_size_total + dep_size_compsensate);
+            update_dep_size(lock->trx);
+			// update_dep_size(lock->trx, sub_dep_size_total + dep_size_compsensate);
 		}
 	}
 	for (i = 0; i < new_granted.size(); ++i) {
 		lock = new_granted[i];
+        /*
 		dep_size_compsensate = 0;
 		for (j = 0; j < wait_locks.size(); ++j) {
 			wait_lock = wait_locks[j];
@@ -2891,8 +3087,10 @@ vats_grant(
 				dep_size_compsensate -= lock->trx->dep_size + 1;
 			}
 		}
+        */
 		if (lock->trx != released_lock->trx) {
-			update_dep_size(lock->trx, add_dep_size_total + dep_size_compsensate);
+            update_dep_size(lock->trx);
+			// update_dep_size(lock->trx, add_dep_size_total + dep_size_compsensate);
 		}
 	}
 }
@@ -2919,14 +3117,6 @@ lock_rec_find_max_dep_size(
 	}
 
 	return max_dep_lock;
-}
-
-static
-double
-ldsf_finish_time(
-	int chunk_size)
-{
-	return 1 * log2(chunk_size + 1);
 }
 
 static
@@ -3080,6 +3270,7 @@ ldsf_grant(
 	// prior to this schedule.
 	for (i = 0; i < granted_locks.size(); ++i) {
 		lock = granted_locks[i];
+        /*
 		dep_size_compsensate = 0;
 		for (j = 0; j < new_granted.size(); ++j) {
 			new_granted_lock = new_granted[j];
@@ -3087,14 +3278,17 @@ ldsf_grant(
 				dep_size_compsensate += lock->trx->dep_size + 1;
 			}
 		}
+        */
 		if (lock->trx != released_lock->trx) {
-			update_dep_size(lock->trx, sub_dep_size_total + dep_size_compsensate);
+            update_dep_size(lock->trx);
+			// update_dep_size(lock->trx, sub_dep_size_total + dep_size_compsensate);
 		}
 	}
 	// Adjust the dep size of all transactions being granted locks during
 	// this schedule.
 	for (i = 0; i < new_granted.size(); ++i) {
 		lock = new_granted[i];
+        /*
 		dep_size_compsensate = 0;
 		for (j = 0; j < wait_locks.size(); ++j) {
 			wait_lock = wait_locks[j];
@@ -3103,8 +3297,10 @@ ldsf_grant(
 				dep_size_compsensate -= lock->trx->dep_size + 1;
 			}
 		}
+        */
 		if (lock->trx != released_lock->trx) {
-			update_dep_size(lock->trx, add_dep_size_total + dep_size_compsensate);
+            update_dep_size(lock->trx);
+			// update_dep_size(lock->trx, add_dep_size_total + dep_size_compsensate);
 		}
 	}
 
