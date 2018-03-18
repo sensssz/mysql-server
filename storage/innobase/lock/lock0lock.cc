@@ -1430,32 +1430,9 @@ lock_use_fcfs(const trx_t* trx)
 {
 	ut_ad(lock_mutex_own());
 
-	return(thd_is_replication_slave_thread(trx->mysql_thd)
-	       || lock_sys->n_waiting < LOCK_VATS_THRESHOLD);
-}
-
-/** Reset all transactions' ages if necessary (when we go from FCFS to VATS)
- @param[in]	trx		Transaction to check */
-static
-void
-reset_age_if_necessary(const trx_t* in_trx)
-{
-	ut_ad(trx_sys_mutex_own());
-
-	if (lock_sys->schedule_was_fcfs &&
-			!lock_use_fcfs(in_trx)) {
-		trx_t *trx;
-		for (trx = UT_LIST_GET_FIRST(trx_sys->rw_trx_list);
-				 trx != NULL;
-				 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
-			trx->age = 0;
-		}
-		for (trx = UT_LIST_GET_FIRST(trx_sys->mysql_trx_list);
-				 trx != NULL;
-				 trx = UT_LIST_GET_NEXT(trx_list, trx)) {
-			trx->age = 0;
-		}
-	}
+//	return(thd_is_replication_slave_thread(trx->mysql_thd)
+//	       || lock_sys->n_waiting < LOCK_VATS_THRESHOLD);
+	return true;
 }
 
 /** Insert lock record to the head of the queue.
@@ -1706,6 +1683,9 @@ RecLock::create(
 	}
 
 	lock_add(lock, add_to_hash);
+	if (!lock->is_waiting()) {
+		lock->on_granted();
+	}
 
 	if (!trx->owns_mutex) {
 		trx_mutex_exit(trx);
@@ -2316,6 +2296,7 @@ lock_grant(
 {
 	ut_ad(lock_mutex_own());
 
+	lock->on_granted();
 	lock_reset_lock_and_trx_wait(lock);
 
 	if (!lock->trx->owns_mutex) {
@@ -2748,7 +2729,7 @@ struct VATS_Lock_priority {
 			return(false);
 		}
 
-		return(lhs.first->trx->age > rhs.first->trx->age);
+		return(lhs.first->get_priority() > rhs.first->get_priority());
 	}
 };
 
@@ -2949,7 +2930,6 @@ lock_rec_grant(lock_t* in_lock, bool use_fcfs)
 		}
 
 	} else {
-		reset_age_if_necessary(in_lock->trx);
 		for (ulint heap_no = 0;
 		     heap_no < lock_rec_get_n_bits(in_lock);
 		     ++heap_no) {
@@ -2983,6 +2963,11 @@ lock_rec_dequeue_from_page(lock_t* in_lock, bool use_fcfs)
 	auto	trx_lock = &in_lock->trx->lock;
 	auto	space = in_lock->rec_lock.space;
 	auto	page_no = in_lock->rec_lock.page_no;
+
+	if (!in_lock->is_waiting() && in_lock->trx->mysql_thd != nullptr) {
+		double lock_held_time = in_lock->on_released();
+		in_lock->trx->mysql_thd->on_lock_released(lock_held_time);
+	}
 
 	ut_ad(in_lock->index->table->n_rec_locks > 0);
 	in_lock->index->table->n_rec_locks--;

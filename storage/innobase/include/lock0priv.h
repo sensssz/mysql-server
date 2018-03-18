@@ -46,6 +46,7 @@ those functions in lock/ */
 #include "hash0hash.h"
 #include "trx0types.h"
 
+#include <chrono>
 #include <utility>
 
 /** A table lock */
@@ -130,6 +131,8 @@ struct lock_t {
 	/** Hash chain node for a record lock. The link node in a singly
 	linked list, used by the hash table. */
 	lock_t*			hash;
+
+	std::chrono::timepoint<std::chrono::high_resolution_clock> granted_time;
 
 	union {
 		/** Table lock */
@@ -238,6 +241,22 @@ struct lock_t {
 	trx_que_t trx_que_state() const
 	{
 		return(trx->lock.que_state);
+	}
+
+	void on_granted()
+	{
+		granted_time = std::chrono::high_resolution_clock::now();
+	}
+
+	double on_released()
+	{
+		auto now = std::chrono::high_resolution_clock::now();
+		auto duration = std::chrono::duration_cast<std::chrono::nanosecond>(now - granted_time);
+		return static_cast<double>(duration.count());
+	}
+
+	double get_priority() {
+		return trx->age / trx->mysql_thd->get_esimated_remaining_time();
 	}
 
 	/** Print the lock object into the given output stream.

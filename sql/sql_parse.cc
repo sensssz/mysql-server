@@ -1719,6 +1719,8 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
 
     DBUG_PRINT("query",("%-.4096s", thd->query().str));
 
+		thd->on_new_query(thd->quer().str, thd->query().length);
+
 #if defined(ENABLED_PROFILING)
     thd->profiling.set_query_source(thd->query().str, thd->query().length);
 #endif
