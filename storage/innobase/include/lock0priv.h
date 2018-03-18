@@ -41,6 +41,7 @@ those functions in lock/ */
 #error Do not include lock0priv.h outside of the lock/ module
 #endif
 
+#include "sql/sql_class.h"
 #include "univ.i"
 #include "dict0types.h"
 #include "hash0hash.h"
@@ -132,7 +133,7 @@ struct lock_t {
 	linked list, used by the hash table. */
 	lock_t*			hash;
 
-	std::chrono::timepoint<std::chrono::high_resolution_clock> granted_time;
+	std::chrono::time_point<std::chrono::high_resolution_clock> granted_time;
 
 	union {
 		/** Table lock */
@@ -251,12 +252,12 @@ struct lock_t {
 	double on_released()
 	{
 		auto now = std::chrono::high_resolution_clock::now();
-		auto duration = std::chrono::duration_cast<std::chrono::nanosecond>(now - granted_time);
+		auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(now - granted_time);
 		return static_cast<double>(duration.count());
 	}
 
 	double get_priority() {
-		return trx->age / trx->mysql_thd->get_esimated_remaining_time();
+		return trx->age / trx->mysql_thd->get_estimated_remaining_time();
 	}
 
 	/** Print the lock object into the given output stream.

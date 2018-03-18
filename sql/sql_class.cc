@@ -571,8 +571,8 @@ THD::THD(bool enable_plugins)
 
 
 void THD::on_new_query(const char *str, size_t length) {
+	std::string query(str, length);
 	if (previous_is_commit) {
-		std::string query(str, length);
 		for (auto &prefix : kTrxPrefix) {
 			if (query.find(prefix) == 0) {
 				current_trx_type = prefix;
@@ -596,7 +596,7 @@ void THD::on_lock_released(double lock_held_duration) {
 double THD::get_estimated_remaining_time() {
 	auto iter = remaining_times.find(current_trx_type);
 	if (iter != remaining_times.end()) {
-		return iter->first;
+		return iter->second.first;
 	}
 	return trx_avg_remaining.first;
 }
