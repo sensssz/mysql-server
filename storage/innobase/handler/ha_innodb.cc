@@ -21909,18 +21909,18 @@ static MYSQL_SYSVAR_ULONG(doublewrite_batch_size, srv_doublewrite_batch_size,
   NULL, NULL, 120, 1, 127, 0);
 #endif /* defined UNIV_DEBUG || defined UNIV_PERF_DEBUG */
 
-static MYSQL_SYSVAR_ENUM(lock_schedule_algorithm, innodb_lock_schedule_algorithm,
-	 PLUGIN_VAR_RQCMDARG,
-	 "The algorithm Innodb uses for deciding which locks to grant next when"
-	 " a lock is released. Possible values are"
-	 " FCFS"
-	 " grant the locks in First-Come-First-Served order;"
-	 " LDSF"
-	 " use the Largest-Dependency-Set-First algorithm;"
-	 " LDRF"
-	 " use the Largest-Dependency-Set-Remaining-Time-Ratio-First algorithm;",
-	 NULL, NULL, INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS,
-	 &innodb_lock_schedule_algorithm_typelib);
+static MYSQL_SYSVAR_ENUM(lock_schedule, innodb_lock_schedule,
+	PLUGIN_VAR_RQCMDARG,
+	"The algorithm Innodb uses for deciding which locks to grant next when"
+	" a lock is released. Possible values are"
+	" FCFS"
+	" grant the locks in First-Come-First-Served order;"
+	" LDSF"
+	" use the Largest-Dependency-Set-First algorithm;"
+	" LDRF"
+	" use the Largest-Dependency-Set-Remaining-Time-Ratio-First algorithm;",
+	NULL, NULL, INNODB_LOCK_SCHEDULE_FCFS,
+	&innodb_lock_schedule_typelib);
 
 static MYSQL_SYSVAR_ULONG(buffer_pool_instances, srv_buf_pool_instances,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
