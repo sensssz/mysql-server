@@ -53,6 +53,19 @@ Created 5/7/1996 Heikki Tuuri
 // Forward declaration
 class ReadView;
 
+/** Alternatives for innodb_lock_schedule_algorithm, which can be changed by
+ setting innodb_lock_schedule_algorithm. */
+enum innodb_lock_schedule_t {
+	/*!< First Come First Served */
+	INNODB_LOCK_SCHEDULE_FCFS,
+	/*!< Largest Dependency Set First */
+	INNODB_LOCK_SCHEDULE_LDSF,
+	/*!< Largest Dependency Set Remaining Time Ratio First */
+	INNODB_LOCK_SCHEDULE_LDRF
+};
+
+extern ulong innodb_lock_schedule;
+
 extern bool	innobase_deadlock_detect;
 
 /*********************************************************************//**

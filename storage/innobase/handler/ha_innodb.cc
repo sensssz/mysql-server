@@ -458,6 +458,21 @@ static TYPELIB innodb_default_row_format_typelib = {
 	NULL
 };
 
+/** Possible values for system variable "innodb_default_row_format". */
+static const char* innodb_lock_schedule_names[] = {
+	"fcfs",
+	"ldsf",
+	"ldrf",
+	NullS
+};
+
+static TYPELIB innodb_lock_schedule_typelib = {
+	array_elements(innodb_lock_schedule_names) - 1,
+	"innodb_lock_schedule_typelib",
+	innodb_lock_schedule_names,
+	NULL
+};
+
 #else /* !UNIV_HOTBACKUP */
 
 /** Returns the name of the checksum algorithm corresponding to the
@@ -21894,6 +21909,19 @@ static MYSQL_SYSVAR_ULONG(doublewrite_batch_size, srv_doublewrite_batch_size,
   NULL, NULL, 120, 1, 127, 0);
 #endif /* defined UNIV_DEBUG || defined UNIV_PERF_DEBUG */
 
+static MYSQL_SYSVAR_ENUM(lock_schedule_algorithm, innodb_lock_schedule_algorithm,
+	 PLUGIN_VAR_RQCMDARG,
+	 "The algorithm Innodb uses for deciding which locks to grant next when"
+	 " a lock is released. Possible values are"
+	 " FCFS"
+	 " grant the locks in First-Come-First-Served order;"
+	 " LDSF"
+	 " use the Largest-Dependency-Set-First algorithm;"
+	 " LDRF"
+	 " use the Largest-Dependency-Set-Remaining-Time-Ratio-First algorithm;",
+	 NULL, NULL, INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS,
+	 &innodb_lock_schedule_algorithm_typelib);
+
 static MYSQL_SYSVAR_ULONG(buffer_pool_instances, srv_buf_pool_instances,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "Number of buffer pool instances, set to higher value on high-end machines to increase scalability",
@@ -22514,6 +22542,7 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(ft_num_word_optimize),
   MYSQL_SYSVAR(ft_sort_pll_degree),
   MYSQL_SYSVAR(force_load_corrupted),
+	MYSQL_SYSVAR(lock_schedule),
   MYSQL_SYSVAR(lock_wait_timeout),
   MYSQL_SYSVAR(deadlock_detect),
   MYSQL_SYSVAR(page_size),

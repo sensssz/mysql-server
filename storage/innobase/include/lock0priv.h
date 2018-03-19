@@ -256,7 +256,7 @@ struct lock_t {
 		return static_cast<double>(duration.count());
 	}
 
-	double get_priority() {
+	double get_ldrf_priority() {
 		return trx->age / trx->mysql_thd->get_estimated_remaining_time();
 	}
 

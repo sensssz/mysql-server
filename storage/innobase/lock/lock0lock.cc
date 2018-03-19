@@ -67,6 +67,8 @@ Created 5/7/1996 Heikki Tuuri
 /* Flag to enable/disable deadlock detector. */
 bool	innobase_deadlock_detect = true;
 
+ulong innodb_lock_schedule = INNODB_LOCK_SCHEDULE_FCFS;
+
 /** Total number of cached record locks */
 static const ulint	REC_LOCK_CACHE = 8;
 
@@ -1430,9 +1432,8 @@ lock_use_fcfs(const trx_t* trx)
 {
 	ut_ad(lock_mutex_own());
 
-//	return(thd_is_replication_slave_thread(trx->mysql_thd)
-//	       || lock_sys->n_waiting < LOCK_VATS_THRESHOLD);
-	return true;
+	return(thd_is_replication_slave_thread(trx->mysql_thd)
+	       || innodb_lock_schedule == INNODB_LOCK_SCHEDULE_FCFS);
 }
 
 /** Insert lock record to the head of the queue.
@@ -2729,7 +2730,11 @@ struct VATS_Lock_priority {
 			return(false);
 		}
 
-		return(lhs.first->get_priority() > rhs.first->get_priority());
+		if (innodb_lock_schedule == INNODB_LOCK_SCHEDULE_LDSF) {
+			return lhs.first->trx->age > rhs.first->trx->age;
+		} else {
+			return(lhs.first->get_ldrf_priority() > rhs.first->get_ldrf_priority());
+		}
 	}
 };
 
