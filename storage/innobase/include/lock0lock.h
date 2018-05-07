@@ -1003,14 +1003,24 @@ struct lock_sys_t{
 						memory update hotspots from
 						residing on the same memory
 						cache line */
-	LockMutex	mutex;			/*!< Mutex protecting the
-						locks */
 	hash_table_t*	rec_hash;		/*!< hash table of the record
 						locks */
 	hash_table_t*	prdt_hash;		/*!< hash table of the predicate
 						lock */
 	hash_table_t*	prdt_page_hash;		/*!< hash table of the page
 						lock */
+	LockMutex	mutex;			/*!< Mutex protecting the locks */
+	LockMutex	mutex1;
+	LockMutex	mutex2;
+	LockMutex	mutex3;
+	LockMutex	mutex4;
+	LockMutex	mutex5;
+	LockMutex	mutex6;
+	LockMutex	mutex7;
+	LockMutex	mutex8;
+	LockMutex	mutex9;
+	LockMutex	mutex10;
+	LockMutex	mutex11;
 
 	char		pad2[CACHE_LINE_SIZE];	/*!< Padding */
 	LockMutex	wait_mutex;		/*!< Mutex protecting the
@@ -1084,22 +1094,54 @@ lock_rec_trx_wait(
 /** The lock system */
 extern lock_sys_t*	lock_sys;
 
-/** Test if lock_sys->mutex can be acquired without waiting. */
+/*
 #define lock_mutex_enter_nowait() 		\
 	(lock_sys->mutex.trylock(__FILE__, __LINE__))
 
-/** Test if lock_sys->mutex is owned. */
 #define lock_mutex_own() (lock_sys->mutex.is_owned())
 
-/** Acquire the lock_sys->mutex. */
 #define lock_mutex_enter() do {			\
 	mutex_enter(&lock_sys->mutex);		\
 } while (0)
 
-/** Release the lock_sys->mutex. */
 #define lock_mutex_exit() do {			\
 	lock_sys->mutex.exit();			\
 } while (0)
+*/
+
+/** Test if lock_sys->mutex is owned. */
+bool lock_mutex_own();
+
+/** Acquire the lock_sys->mutex. */
+void lock_mutex_enter();
+
+/** Release the lock_sys->mutex. */
+void lock_mutex_exit();
+
+/** Test if lock_sys->mutex can be acquired without waiting. */
+bool lock_mutex_enter_nowait();
+void lock_mutex_enter1();
+void lock_mutex_exit1();
+void lock_mutex_enter2();
+void lock_mutex_exit2();
+void lock_mutex_enter3();
+void lock_mutex_exit3();
+void lock_mutex_enter4();
+void lock_mutex_exit4();
+void lock_mutex_enter5();
+void lock_mutex_exit5();
+void lock_mutex_enter6();
+void lock_mutex_exit6();
+void lock_mutex_enter7();
+void lock_mutex_exit7();
+void lock_mutex_enter8();
+void lock_mutex_exit8();
+void lock_mutex_enter9();
+void lock_mutex_exit9();
+void lock_mutex_enter10();
+void lock_mutex_exit10();
+void lock_mutex_enter11();
+void lock_mutex_exit11();
 
 /** Test if lock_sys->wait_mutex is owned. */
 #define lock_wait_mutex_own() (lock_sys->wait_mutex.is_owned())

@@ -892,6 +892,10 @@ struct trx_t {
 					state and lock (except some fields
 					of lock, which are protected by
 					lock_sys->mutex) */
+	trx_lock_t	lock;		/*!< Information about the transaction
+					locks and state. Protected by
+					trx->mutex or lock_sys->mutex
+					or both */
 
 	/* Note: in_depth was split from in_innodb for fixing a RO
 	performance issue. Acquiring the trx_t::mutex for each row
@@ -1006,10 +1010,6 @@ struct trx_t {
 					to check for the view limit for
 					transactions that are committing */
 
-	trx_lock_t	lock;		/*!< Information about the transaction
-					locks and state. Protected by
-					trx->mutex or lock_sys->mutex
-					or both */
 	bool		is_recovered;	/*!< 0=normal transaction,
 					1=recovered, must be rolled back,
 					protected by trx_sys->mutex when

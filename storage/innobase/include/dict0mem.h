@@ -1330,6 +1330,9 @@ struct dict_table_t {
 	/** Id of the table. */
 	table_id_t				id;
 
+	/** List of locks on the table. Protected by lock_sys->mutex. */
+	table_lock_list_t			locks;
+
 	/** Memory heap. If you allocate from this heap after the table has
 	been created then be sure to account the allocation into
 	dict_sys->size. When closing the table we do something like
@@ -1685,9 +1688,6 @@ private:
 	ulint					n_ref_count;
 
 public:
-	/** List of locks on the table. Protected by lock_sys->mutex. */
-	table_lock_list_t			locks;
-
 	/** Timestamp of the last modification of this table. */
 	time_t					update_time;
 

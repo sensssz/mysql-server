@@ -46,14 +46,31 @@ ut_dbg_assertion_failed(
 	ulint		line)	/*!< in: line number of the assertion */
 	UNIV_COLD MY_ATTRIBUTE((nonnull(2), noreturn));
 
+/*************************************************************//**
+Report a failed assertion. */
+void
+ut_print_dbg_assertion_failure(
+/*====================*/
+	const char*	expr,	/*!< in: the failed assertion */
+	const char*	file,	/*!< in: source file containing the assertion */
+	ulint		line);	/*!< in: line number of the assertion */
+
 /** Abort execution if EXPR does not evaluate to nonzero.
 @param EXPR assertion expression that should hold */
 #define ut_a(EXPR) do {						\
 	if (UNIV_UNLIKELY(!(ulint) (EXPR))) {			\
-		ut_dbg_assertion_failed(#EXPR,			\
+		ut_print_dbg_assertion_failure(#EXPR,			\
 				__FILE__, (ulint) __LINE__);	\
 	}							\
 } while (0)
+/*
+static void ut_a(bool val) {
+	if (UNIV_UNLIKELY(val)) {
+		ut_print_dbg_assertion_failure("",
+				__FILE__, (ulint) __LINE__);
+	}
+}
+*/
 
 /** Abort execution. */
 #define ut_error						\
@@ -62,11 +79,20 @@ ut_dbg_assertion_failed(
 #ifdef UNIV_DEBUG
 /** Debug assertion. Does nothing unless UNIV_DEBUG is defined. */
 #define ut_ad(EXPR)	ut_a(EXPR)
+/*
+static void ut_ad(bool val) {
+	ut_a(val);
+}
+*/
 /** Debug statement. Does nothing unless UNIV_DEBUG is defined. */
 #define ut_d(EXPR)	EXPR
 #else
 /** Debug assertion. Does nothing unless UNIV_DEBUG is defined. */
 #define ut_ad(EXPR)
+/*
+static void ut_ad(bool val) {
+}
+*/
 /** Debug statement. Does nothing unless UNIV_DEBUG is defined. */
 #define ut_d(EXPR)
 #endif

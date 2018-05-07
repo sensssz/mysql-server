@@ -66,3 +66,43 @@ ut_dbg_assertion_failed(
 	fflush(stdout);
 	abort();
 }
+
+/*************************************************************//**
+Report a failed assertion. */
+void
+ut_print_dbg_assertion_failure(
+/*====================*/
+	const char* expr,	/*!< in: the failed assertion (optional) */
+	const char* file,	/*!< in: source file containing the assertion */
+	ulint line)		/*!< in: line number of the assertion */
+{
+	ut_print_timestamp(stderr);
+#ifdef UNIV_HOTBACKUP
+	fprintf(stderr, "  InnoDB: Assertion failure in file %s line %lu\n",
+		file, line);
+#else /* UNIV_HOTBACKUP */
+	fprintf(stderr,
+		"  InnoDB: Assertion failure in thread " ULINTPF
+		" in file %s line " ULINTPF "\n",
+		os_thread_pf(os_thread_get_curr_id()),
+		innobase_basename(file), line);
+#endif /* UNIV_HOTBACKUP */
+	if (expr) {
+		fprintf(stderr,
+			"InnoDB: Failing assertion: %s\n", expr);
+	}
+
+	fputs("InnoDB: We intentionally generate a memory trap.\n"
+	      "InnoDB: Submit a detailed bug report"
+	      " to http://bugs.mysql.com.\n"
+	      "InnoDB: If you get repeated assertion failures"
+	      " or crashes, even\n"
+	      "InnoDB: immediately after the mysqld startup, there may be\n"
+	      "InnoDB: corruption in the InnoDB tablespace. Please refer to\n"
+	      "InnoDB: " REFMAN "forcing-innodb-recovery.html\n"
+	      "InnoDB: about forcing recovery.\n", stderr);
+
+	fflush(stderr);
+	fflush(stdout);
+	// abort();
+}

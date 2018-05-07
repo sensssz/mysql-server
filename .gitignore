@@ -85,6 +85,11 @@ CMakeCache.txt
 .vimrc
 50
 =6
+*.py
+*.bak
+*.patch
+critical_sections*
+mem_access_lines*
 BUILD/compile-pentium-maintainer
 BitKeeper/etc/RESYNC_TREE
 BitKeeper/etc/config
