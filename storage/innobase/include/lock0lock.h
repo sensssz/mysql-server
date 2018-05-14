@@ -1094,7 +1094,6 @@ lock_rec_trx_wait(
 /** The lock system */
 extern lock_sys_t*	lock_sys;
 
-/*
 #define lock_mutex_enter_nowait() 		\
 	(lock_sys->mutex.trylock(__FILE__, __LINE__))
 
@@ -1107,19 +1106,19 @@ extern lock_sys_t*	lock_sys;
 #define lock_mutex_exit() do {			\
 	lock_sys->mutex.exit();			\
 } while (0)
-*/
 
-/** Test if lock_sys->mutex is owned. */
-bool lock_mutex_own();
+///** Test if lock_sys->mutex is owned. */
+//bool lock_mutex_own();
+//
+///** Acquire the lock_sys->mutex. */
+//void lock_mutex_enter();
+//
+///** Release the lock_sys->mutex. */
+//void lock_mutex_exit();
+//
+///** Test if lock_sys->mutex can be acquired without waiting. */
+//bool lock_mutex_enter_nowait();
 
-/** Acquire the lock_sys->mutex. */
-void lock_mutex_enter();
-
-/** Release the lock_sys->mutex. */
-void lock_mutex_exit();
-
-/** Test if lock_sys->mutex can be acquired without waiting. */
-bool lock_mutex_enter_nowait();
 void lock_mutex_enter1();
 void lock_mutex_exit1();
 void lock_mutex_enter2();
@@ -1142,6 +1141,71 @@ void lock_mutex_enter10();
 void lock_mutex_exit10();
 void lock_mutex_enter11();
 void lock_mutex_exit11();
+
+
+inline void lock_slock_enter(ulint fold) {
+	ut_a(!hash_plock_s(lock_sys->rec_hash, fold));
+}
+
+inline void lock_slock_exit(ulint fold) {
+	hash_punlock_s(lock_sys->rec_hash, fold);
+}
+
+inline void lock_xlock_enter(ulint fold) {
+	ut_a(!hash_plock_x(lock_sys->rec_hash, fold));
+}
+
+inline void lock_xlock_exit(ulint fold) {
+	hash_punlock_x(lock_sys->rec_hash, fold);
+}
+
+inline void lock_slock_enter2(ulint fold1, ulint fold2) {
+	if (fold1 < fold2) {
+		hash_plock_s(lock_sys->rec_hash, fold1);
+		hash_plock_s(lock_sys->rec_hash, fold2);
+	} else if (fold1 > fold2) {
+		hash_plock_s(lock_sys->rec_hash, fold2);
+		hash_plock_s(lock_sys->rec_hash, fold1);
+	} else {
+		hash_plock_s(lock_sys->rec_hash, fold1);
+	}
+}
+
+inline void lock_slock_exit2(ulint fold1, ulint fold2) {
+	if (fold1 < fold2) {
+		hash_punlock_s(lock_sys->rec_hash, fold2);
+		hash_punlock_s(lock_sys->rec_hash, fold1);
+	} else if (fold1 > fold2) {
+		hash_punlock_s(lock_sys->rec_hash, fold1);
+		hash_punlock_s(lock_sys->rec_hash, fold2);
+	} else {
+		hash_punlock_s(lock_sys->rec_hash, fold1);
+	}
+}
+
+inline void lock_xlock_enter2(ulint fold1, ulint fold2) {
+	if (fold1 < fold2) {
+		hash_plock_x(lock_sys->rec_hash, fold1);
+		hash_plock_x(lock_sys->rec_hash, fold2);
+	} else if (fold1 > fold2) {
+		hash_plock_x(lock_sys->rec_hash, fold2);
+		hash_plock_x(lock_sys->rec_hash, fold1);
+	} else {
+		hash_plock_x(lock_sys->rec_hash, fold1);
+	}
+}
+
+inline void lock_xlock_exit2(ulint fold1, ulint fold2) {
+	if (fold1 < fold2) {
+		hash_punlock_x(lock_sys->rec_hash, fold2);
+		hash_punlock_x(lock_sys->rec_hash, fold1);
+	} else if (fold1 > fold2) {
+		hash_punlock_x(lock_sys->rec_hash, fold1);
+		hash_punlock_x(lock_sys->rec_hash, fold2);
+	} else {
+		hash_punlock_x(lock_sys->rec_hash, fold1);
+	}
+}
 
 /** Test if lock_sys->wait_mutex is owned. */
 #define lock_wait_mutex_own() (lock_sys->wait_mutex.is_owned())

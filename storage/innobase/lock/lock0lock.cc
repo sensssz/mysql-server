@@ -50,6 +50,7 @@ Created 5/7/1996 Heikki Tuuri
 #include "pars0pars.h"
 
 #include <set>
+#include <vector>
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
@@ -66,30 +67,29 @@ static const ulint	TABLE_LOCK_CACHE = 8;
 /** Size in bytes, of the table lock instance */
 static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
-/** Test if lock_sys->mutex is owned. */
-__attribute__((noinline))
-bool lock_mutex_own() {
-	return true;
-}
-
-/** Acquire the lock_sys->mutex. */
-__attribute__((noinline))
-void lock_mutex_enter() {
-	mutex_enter(&lock_sys->mutex);
-}
-
-/** Release the lock_sys->mutex. */
-__attribute__((noinline))
-void lock_mutex_exit() {
-	lock_sys->mutex.exit();
-}
-
-/** Test if lock_sys->mutex can be acquired without waiting. */
-bool lock_mutex_enter_nowait() {
-	lock_mutex_enter();
-	return true;
-}
-
+///** Test if lock_sys->mutex is owned. */
+//__attribute__((noinline))
+//bool lock_mutex_own() {
+//	return true;
+//}
+//
+///** Acquire the lock_sys->mutex. */
+//__attribute__((noinline))
+//void lock_mutex_enter() {
+//	mutex_enter(&lock_sys->mutex);
+//}
+//
+///** Release the lock_sys->mutex. */
+//__attribute__((noinline))
+//void lock_mutex_exit() {
+//	lock_sys->mutex.exit();
+//}
+//
+///** Test if lock_sys->mutex can be acquired without waiting. */
+//bool lock_mutex_enter_nowait() {
+//	lock_mutex_enter();
+//	return true;
+//}
 
 /** Acquire the lock_sys->mutex. */
 __attribute__((noinline))
@@ -222,6 +222,27 @@ __attribute__((noinline))
 void lock_mutex_exit11() {
 	lock_sys->mutex11.exit();
 }
+
+inline bool lock_slock_enter_lock(lock_t *lock) {
+	return hash_plock_s(lock_hash_get(lock->type_mode),
+											lock_rec_fold(lock->space(), lock->page_number()));
+}
+
+inline void lock_slock_exit_lock(lock_t *lock) {
+	hash_punlock_s(lock_hash_get(lock->type_mode),
+								 lock_rec_fold(lock->space(), lock->page_number()));
+}
+
+inline bool lock_xlock_enter_lock(lock_t *lock) {
+	return hash_plock_x(lock_hash_get(lock->type_mode),
+											lock_rec_fold(lock->space(), lock->page_number()));
+}
+
+inline void lock_xlock_exit_lock(lock_t *lock) {
+	hash_punlock_x(lock_hash_get(lock->type_mode),
+								 lock_rec_fold(lock->space(), lock->page_number()));
+}
+
 /** Deadlock checker. */
 class DeadlockChecker {
 public:
@@ -313,6 +334,12 @@ private:
 	bool is_visited(const lock_t* lock) const
 	{
 		return(lock->trx->lock.deadlock_mark > m_mark_start);
+	}
+
+	void exit_all() {
+		for (auto fold : folds) {
+			lock_slock_exit(fold);
+		}
 	}
 
 	/** Get the next lock in the queue that is owned by a transaction
@@ -408,6 +435,8 @@ private:
 
 	/**  Value of lock_mark_count at the start of the deadlock check. */
 	ib_uint64_t		m_mark_start;
+
+	std::set<ulint, std::less<ulint>, ut_allocator<ulint>> folds;
 
 	/** Number of states pushed onto the stack */
 	size_t			m_n_elems;
@@ -600,6 +629,7 @@ lock_sys_create(
 	lock_sys->last_slot = lock_sys->waiting_threads;
 
 	mutex_create(LATCH_ID_LOCK_SYS, &lock_sys->mutex);
+
 	mutex_create(LATCH_ID_LOCK_SYS, &lock_sys->mutex1);
 
 	mutex_create(LATCH_ID_LOCK_SYS, &lock_sys->mutex2);
@@ -622,7 +652,6 @@ lock_sys_create(
 
 	mutex_create(LATCH_ID_LOCK_SYS, &lock_sys->mutex11);
 
-
 	mutex_create(LATCH_ID_LOCK_SYS_WAIT, &lock_sys->wait_mutex);
 
 	lock_sys->timeout_event = os_event_create(0);
@@ -630,6 +659,9 @@ lock_sys_create(
 	lock_sys->rec_hash = hash_create(n_cells);
 	lock_sys->prdt_hash = hash_create(n_cells);
 	lock_sys->prdt_page_hash = hash_create(n_cells);
+
+	hash_create_sync_obj(lock_sys->rec_hash, HASH_TABLE_SYNC_PRW_LOCK,
+											 LATCH_ID_LOCK_SYS_HASH, ut_2_power_up(n_cells));
 
 	if (!srv_read_only_mode) {
 		lock_latest_err_file = os_file_create_tmpfile(NULL);
@@ -716,6 +748,20 @@ lock_sys_close(void)
 		lock_latest_err_file = NULL;
 	}
 
+	hash_table_t *rec_hash = lock_sys->rec_hash;
+	if (rec_hash->n_sync_obj > 0) {
+		for (ulint i = 0; i < lock_sys->rec_hash->n_sync_obj; ++i) {
+			if (rec_hash->type == HASH_TABLE_SYNC_MUTEX) {
+				mutex_free(&rec_hash->sync_obj.mutexes[i]);
+			} else if (rec_hash->type == HASH_TABLE_SYNC_RW_LOCK) {
+				rw_lock_free(&rec_hash->sync_obj.rw_locks[i]);
+			} else if (rec_hash->type == HASH_TABLE_SYNC_PRW_LOCK) {
+				pthread_rwlock_destroy(&rec_hash->sync_obj.prw_locks[i]);
+			}
+		}
+		ut_free(rec_hash->sync_obj.prw_locks);
+		ut_free(rec_hash->start_times);
+	}
 	hash_table_free(lock_sys->rec_hash);
 	hash_table_free(lock_sys->prdt_hash);
 	hash_table_free(lock_sys->prdt_page_hash);
@@ -1194,11 +1240,12 @@ lock_rec_expl_exist_on_page(
 {
 	lock_t*	lock;
 
-	lock_mutex_enter();
+	ulint fold = lock_rec_fold(space, page_no);
+	lock_slock_enter(fold);
 	/* Only used in ibuf pages, so rec_hash is good enough */
 	lock = lock_rec_get_first_on_page_addr(lock_sys->rec_hash,
 					       space, page_no);
-	lock_mutex_exit();
+	lock_slock_exit(fold);
 
 	return(lock);
 }
@@ -1493,7 +1540,7 @@ lock_rec_other_trx_holds_expl(
 {
 	trx_t* holds = NULL;
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
 
 	if (trx_t* impl_trx = trx_rw_is_active(trx->id, NULL, false)) {
 		ulint heap_no = page_rec_get_heap_no(rec);
@@ -1503,8 +1550,11 @@ lock_rec_other_trx_holds_expl(
 		     t != NULL;
 		     t = UT_LIST_GET_NEXT(trx_list, t)) {
 
+			ulint fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+			lock_slock_enter(fold);
 			lock_t* expl_lock = lock_rec_has_expl(
 				precise_mode, block, heap_no, t);
+			lock_slock_exit(fold);
 
 			if (expl_lock && expl_lock->trx != impl_trx) {
 				/* An explicit lock is held by trx other than
@@ -1517,7 +1567,7 @@ lock_rec_other_trx_holds_expl(
 		mutex_exit(&trx_sys->mutex);
 	}
 
-	lock_mutex_exit();
+//	lock_mutex_exit();
 
 	return(holds);
 }
@@ -2529,6 +2579,7 @@ RecLock::make_trx_hit_list(
 	const lock_t*	conflict_lock)
 {
 	const lock_t*	next;
+	ulint fold = lock_rec_fold(lock->space(), lock->page_number());
 
 	for (next = conflict_lock; next != NULL; next = next->hash) {
 
@@ -2553,6 +2604,11 @@ RecLock::make_trx_hit_list(
 			continue;
 		}
 
+		lock_t *wait_lock = trx->lock.wait_lock;
+		ulint wait_fold = lock_rec_fold(wait_lock->space(), wait_lock->page_number());
+		if (wait_fold != fold) {
+			lock_xlock_enter(wait_fold);
+		}
 		trx_mutex_enter(trx);
 
 		/* Skip high priority transactions, if already marked for abort
@@ -2564,6 +2620,9 @@ RecLock::make_trx_hit_list(
 		    || trx->abort) {
 
 			trx_mutex_exit(trx);
+			if (wait_fold != fold) {
+				lock_xlock_exit(wait_fold);
+			}
 			continue;
 		}
 
@@ -2581,12 +2640,18 @@ RecLock::make_trx_hit_list(
 			trx->lock.was_chosen_as_deadlock_victim = true;
 			lock_cancel_waiting_and_release(trx->lock.wait_lock);
 			trx_mutex_exit(trx);
+			if (wait_fold != fold) {
+				lock_xlock_exit(wait_fold);
+			}
 			continue;
 		}
 
 		/* Mark for ASYNC Rollback and add to hit list. */
 		mark_trx_for_rollback(trx);
 		trx_mutex_exit(trx);
+		if (wait_fold != fold) {
+			lock_xlock_exit(wait_fold);
+		}
 	}
 
 	ut_ad(next == lock);
@@ -2693,8 +2758,6 @@ lock_rec_dequeue_from_page(
 
 	HASH_DELETE(lock_t, hash, lock_hash,
 		    lock_rec_fold(space, page_no), in_lock);
-
-	UT_LIST_REMOVE(trx_lock->trx_locks, in_lock);
 
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
 	MONITOR_DEC(MONITOR_NUM_RECLOCK);
@@ -2910,8 +2973,10 @@ lock_rec_inherit_to_gap_if_gap_lock(
 						on this record */
 {
 	lock_t*	lock;
+	ulint fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 
 	for (lock = lock_rec_get_first(lock_sys->rec_hash, block, heap_no);
 	     lock != NULL;
@@ -2934,7 +2999,8 @@ lock_rec_inherit_to_gap_if_gap_lock(
 		}
 	}
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 }
 
 /*************************************************************//**
@@ -3040,14 +3106,18 @@ lock_move_reorganize_page(
 	UT_LIST_BASE_NODE_T(lock_t)	old_locks;
 	mem_heap_t*	heap		= NULL;
 	ulint		comp;
+	ulint fold1 = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(oblock->page.id.space(), oblock->page.id.page_no());
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	/* FIXME: This needs to deal with predicate lock too */
 	lock = lock_rec_get_first_on_page(lock_sys->rec_hash, block);
 
 	if (lock == NULL) {
-		lock_mutex_exit();
+		lock_xlock_exit2(fold1, fold2);
+//		lock_mutex_exit();
 
 		return;
 	}
@@ -3149,7 +3219,8 @@ lock_move_reorganize_page(
 #endif /* UNIV_DEBUG */
 	}
 
-	lock_mutex_exit();
+//	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
 
 	mem_heap_free(heap);
 
@@ -3171,11 +3242,14 @@ lock_move_rec_list_end(
 {
 	lock_t*		lock;
 	const ulint	comp	= page_rec_is_comp(rec);
+	ulint fold1 = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(new_block->page.id.space(), new_block->page.id.page_no());
 
 	ut_ad(buf_block_get_frame(block) == page_align(rec));
 	ut_ad(comp == page_is_comp(buf_block_get_frame(new_block)));
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	/* Note: when we move locks from record to record, waiting locks
 	and possible granted gap type locks behind them are enqueued in
@@ -3253,7 +3327,8 @@ lock_move_rec_list_end(
 		}
 	}
 
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 
 #ifdef UNIV_DEBUG_LOCK_VALIDATE
 	ut_ad(lock_rec_validate_page(block));
@@ -3281,12 +3356,15 @@ lock_move_rec_list_start(
 {
 	lock_t*		lock;
 	const ulint	comp	= page_rec_is_comp(rec);
+	ulint fold1 = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(new_block->page.id.space(), new_block->page.id.page_no());
 
 	ut_ad(block->frame == page_align(rec));
 	ut_ad(new_block->frame == page_align(old_end));
 	ut_ad(comp == page_rec_is_comp(old_end));
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	for (lock = lock_rec_get_first_on_page(lock_sys->rec_hash, block); lock;
 	     lock = lock_rec_get_next_on_page(lock)) {
@@ -3359,7 +3437,8 @@ lock_move_rec_list_start(
 #endif /* UNIV_DEBUG */
 	}
 
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 
 #ifdef UNIV_DEBUG_LOCK_VALIDATE
 	ut_ad(lock_rec_validate_page(block));
@@ -3387,12 +3466,15 @@ lock_rtr_move_rec_list(
 	}
 
 	comp = page_rec_is_comp(rec_move[0].old_rec);
+	ulint fold1 = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(new_block->page.id.space(), new_block->page.id.page_no());
 
 	ut_ad(block->frame == page_align(rec_move[0].old_rec));
 	ut_ad(new_block->frame == page_align(rec_move[0].new_rec));
 	ut_ad(comp == page_rec_is_comp(rec_move[0].new_rec));
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	for (lock = lock_rec_get_first_on_page(lock_sys->rec_hash, block); lock;
 	     lock = lock_rec_get_next_on_page(lock)) {
@@ -3440,7 +3522,8 @@ lock_rtr_move_rec_list(
 		}
 	}
 
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 
 #ifdef UNIV_DEBUG_LOCK_VALIDATE
 	ut_ad(lock_rec_validate_page(block));
@@ -3455,8 +3538,11 @@ lock_update_split_right(
 	const buf_block_t*	left_block)	/*!< in: left page */
 {
 	ulint	heap_no = lock_get_min_heap_no(right_block);
+	ulint lfold = lock_rec_fold(left_block->page.id.space(), left_block->page.id.page_no());
+	ulint rfold = lock_rec_fold(right_block->page.id.space(), right_block->page.id.page_no());
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter2(lfold, rfold);
 
 	/* Move the locks on the supremum of the left page to the supremum
 	of the right page */
@@ -3470,7 +3556,8 @@ lock_update_split_right(
 	lock_rec_inherit_to_gap(left_block, right_block,
 				PAGE_HEAP_NO_SUPREMUM, heap_no);
 
-	lock_mutex_exit();
+	lock_xlock_exit2(lfold, rfold);
+//	lock_mutex_exit();
 }
 
 /*************************************************************//**
@@ -3488,7 +3575,10 @@ lock_update_merge_right(
 						page which will be
 						discarded */
 {
-	lock_mutex_enter();
+	ulint lfold = lock_rec_fold(left_block->page.id.space(), left_block->page.id.page_no());
+	ulint rfold = lock_rec_fold(right_block->page.id.space(), right_block->page.id.page_no());
+//	lock_mutex_enter();
+	lock_xlock_enter2(lfold, rfold);
 
 	/* Inherit the locks from the supremum of the left page to the
 	original successor of infimum on the right page, to which the left
@@ -3515,7 +3605,8 @@ lock_update_merge_right(
 
 	lock_rec_free_all_from_discard_page(left_block);
 
-	lock_mutex_exit();
+	lock_xlock_exit2(lfold, rfold);
+//	lock_mutex_exit();
 
 }
 
@@ -3532,14 +3623,18 @@ lock_update_root_raise(
 	const buf_block_t*	block,	/*!< in: index page to which copied */
 	const buf_block_t*	root)	/*!< in: root page */
 {
-	lock_mutex_enter();
+	ulint fold1 = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(root->page.id.space(), root->page.id.page_no());
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	/* Move the locks on the supremum of the root to the supremum
 	of block */
 
 	lock_rec_move(block, root,
 		      PAGE_HEAP_NO_SUPREMUM, PAGE_HEAP_NO_SUPREMUM);
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 }
 
 /*************************************************************//**
@@ -3553,7 +3648,10 @@ lock_update_copy_and_discard(
 	const buf_block_t*	block)		/*!< in: index page;
 						NOT the root! */
 {
-	lock_mutex_enter();
+	ulint fold1 = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(new_block->page.id.space(), new_block->page.id.page_no());
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	/* Move the locks on the supremum of the old page to the supremum
 	of new_page */
@@ -3562,7 +3660,8 @@ lock_update_copy_and_discard(
 		      PAGE_HEAP_NO_SUPREMUM, PAGE_HEAP_NO_SUPREMUM);
 	lock_rec_free_all_from_discard_page(block);
 
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 }
 
 /*************************************************************//**
@@ -3574,8 +3673,11 @@ lock_update_split_left(
 	const buf_block_t*	left_block)	/*!< in: left page */
 {
 	ulint	heap_no = lock_get_min_heap_no(right_block);
+	ulint fold1 = lock_rec_fold(left_block->page.id.space(), left_block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(right_block->page.id.space(), right_block->page.id.page_no());
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	/* Inherit the locks to the supremum of the left page from the
 	successor of the infimum on the right page */
@@ -3583,7 +3685,8 @@ lock_update_split_left(
 	lock_rec_inherit_to_gap(left_block, right_block,
 				PAGE_HEAP_NO_SUPREMUM, heap_no);
 
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 }
 
 /*************************************************************//**
@@ -3600,10 +3703,13 @@ lock_update_merge_left(
 						which will be discarded */
 {
 	const rec_t*	left_next_rec;
+	ulint fold1 = lock_rec_fold(left_block->page.id.space(), left_block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(right_block->page.id.space(), right_block->page.id.page_no());
 
 	ut_ad(left_block->frame == page_align(orig_pred));
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	left_next_rec = page_rec_get_next_const(orig_pred);
 
@@ -3641,7 +3747,8 @@ lock_update_merge_left(
 
 	lock_rec_free_all_from_discard_page(right_block);
 
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 }
 
 /*************************************************************//**
@@ -3661,13 +3768,18 @@ lock_rec_reset_and_inherit_gap_locks(
 	ulint			heap_no)	/*!< in: heap_no of the
 						donating record */
 {
-	lock_mutex_enter();
+	ulint fold1 = lock_rec_fold(heir_block->page.id.space(), heir_block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	lock_rec_reset_and_release_wait(heir_block, heir_heap_no);
 
 	lock_rec_inherit_to_gap(heir_block, block, heir_heap_no, heap_no);
 
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 }
 
 /*************************************************************//**
@@ -3685,14 +3797,18 @@ lock_update_discard(
 	const rec_t*	rec;
 	ulint		heap_no;
 	const page_t*	page = block->frame;
+	ulint fold1 = lock_rec_fold(heir_block->page.id.space(), heir_block->page.id.page_no());
+	ulint fold2 = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	if (!lock_rec_get_first_on_page(lock_sys->rec_hash, block)
 	    && (!lock_rec_get_first_on_page(lock_sys->prdt_hash, block))) {
 		/* No locks exist on page, nothing to do */
 
-		lock_mutex_exit();
+		lock_xlock_exit2(fold1, fold2);
+//		lock_mutex_exit();
 
 		return;
 	}
@@ -3730,7 +3846,8 @@ lock_update_discard(
 
 	lock_rec_free_all_from_discard_page(block);
 
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 }
 
 /*************************************************************//**
@@ -3774,6 +3891,7 @@ lock_update_delete(
 	const page_t*	page = block->frame;
 	ulint		heap_no;
 	ulint		next_heap_no;
+	ulint		fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
 	ut_ad(page == page_align(rec));
 
@@ -3789,7 +3907,8 @@ lock_update_delete(
 								       FALSE));
 	}
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 
 	/* Let the next record inherit the locks from rec, in gap mode */
 
@@ -3799,7 +3918,8 @@ lock_update_delete(
 
 	lock_rec_reset_and_release_wait(block, heap_no);
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 }
 
 /*********************************************************************//**
@@ -3820,14 +3940,17 @@ lock_rec_store_on_page_infimum(
 					record */
 {
 	ulint	heap_no = page_rec_get_heap_no(rec);
+	ulint	fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
 	ut_ad(block->frame == page_align(rec));
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 
 	lock_rec_move(block, block, PAGE_HEAP_NO_INFIMUM, heap_no);
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 }
 
 /*********************************************************************//**
@@ -3846,12 +3969,16 @@ lock_rec_restore_from_page_infimum(
 					the infimum */
 {
 	ulint	heap_no = page_rec_get_heap_no(rec);
+	ulint	fold1 = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+	ulint	fold2 = lock_rec_fold(donator->page.id.space(), donator->page.id.page_no());
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter2(fold1, fold2);
 
 	lock_rec_move(block, donator, heap_no, PAGE_HEAP_NO_INFIMUM);
 
-	lock_mutex_exit();
+	lock_xlock_exit2(fold1, fold2);
+//	lock_mutex_exit();
 }
 
 /*========================= TABLE LOCKS ==============================*/
@@ -4458,6 +4585,7 @@ lock_rec_unlock(
 	ulint		heap_no;
 	const char*	stmt;
 	size_t		stmt_len;
+	ulint			fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
 	ut_ad(trx);
 	ut_ad(rec);
@@ -4467,7 +4595,8 @@ lock_rec_unlock(
 
 	heap_no = page_rec_get_heap_no(rec);
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 	trx_mutex_enter(trx);
 
 	first_lock = lock_rec_get_first(lock_sys->rec_hash, block, heap_no);
@@ -4482,7 +4611,8 @@ lock_rec_unlock(
 		}
 	}
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 	trx_mutex_exit(trx);
 
 	stmt = innobase_get_stmt_unsafe(trx->mysql_thd, &stmt_len);
@@ -4513,7 +4643,8 @@ released:
 		}
 	}
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 	trx_mutex_exit(trx);
 }
 
@@ -4590,7 +4721,7 @@ lock_trx_release_read_locks(
 		return;
 	}
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
 
 	lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
 
@@ -4607,10 +4738,12 @@ lock_trx_release_read_locks(
 			continue;
 		}
 
+		lock_xlock_enter_lock(lock);
 		/* Release any GAP only lock. */
 		if (lock->is_gap()) {
 
 			lock_rec_dequeue_from_page(lock);
+			lock_xlock_exit_lock(lock);
 			lock = next_lock;
 			continue;
 		}
@@ -4618,6 +4751,7 @@ lock_trx_release_read_locks(
 		/* Don't release any non-GAP lock if not asked. */
 		if (lock->is_record_not_gap() && only_gap) {
 
+			lock_xlock_exit_lock(lock);
 			lock = next_lock;
 			continue;
 		}
@@ -4626,6 +4760,7 @@ lock_trx_release_read_locks(
 		if (lock->mode() == LOCK_S && !only_gap) {
 
 			lock_rec_dequeue_from_page(lock);
+			lock_xlock_exit_lock(lock);
 			lock = next_lock;
 			continue;
 		}
@@ -4636,6 +4771,7 @@ lock_trx_release_read_locks(
 		/* Grant locks */
 		lock_rec_grant(lock);
 
+		lock_xlock_exit_lock(lock);
 		lock = next_lock;
 
 		++count;
@@ -4644,15 +4780,91 @@ lock_trx_release_read_locks(
 			/* Release the mutex for a while, so that we
 			do not monopolize it */
 
+//			lock_mutex_exit();
+
+//			lock_mutex_enter();
+
+			count = 0;
+		}
+	}
+
+//	lock_mutex_exit();
+}
+
+static
+void
+lock_release_table_prdt(
+	trx_t*	trx,
+	const std::vector<lock_t *, ut_allocator<lock_t *>> &locks,
+	size_t end)
+{
+	ulint		count = 0;
+	trx_id_t	max_trx_id = trx_sys_get_max_trx_id();
+
+	ut_ad(lock_mutex_own());
+	ut_ad(!trx_mutex_own(trx));
+	ut_ad(!trx->is_dd_trx);
+
+	for (size_t i = 0; i < end; i++) {
+		lock_t *lock = locks[i];
+		ut_d(lock_check_dict_lock(lock));
+
+		if (lock_get_type_low(lock) == LOCK_REC) {
+
+			lock_rec_dequeue_from_page(lock);
+		} else {
+			dict_table_t*	table;
+
+			table = lock->un_member.tab_lock.table;
+
+			if (lock_get_mode(lock) != LOCK_IS
+					&& trx->undo_no != 0) {
+
+				/* The trx may have modified the table. We
+				 block the use of the MySQL query cache for
+				 all currently active transactions. */
+
+				table->query_cache_inv_id = max_trx_id;
+			}
+
+			lock_table_dequeue(lock);
+		}
+
+		if (count == LOCK_RELEASE_INTERVAL) {
+			/* Release the mutex for a while, so that we
+			 do not monopolize it */
+
 			lock_mutex_exit();
 
 			lock_mutex_enter();
 
 			count = 0;
 		}
-	}
 
-	lock_mutex_exit();
+		++count;
+	}
+}
+
+static
+void
+lock_release_rec(
+/*=========*/
+	trx_t*	trx,
+	const std::vector<lock_t *, ut_allocator<lock_t *>> &locks,
+	size_t	rec_start)
+{
+	ut_ad(lock_mutex_own());
+	ut_ad(!trx_mutex_own(trx));
+	ut_ad(!trx->is_dd_trx);
+
+	for (size_t i = rec_start; i < locks.size(); i++) {
+		lock_t *lock = locks[i];
+		ut_d(lock_check_dict_lock(lock));
+
+		lock_xlock_enter_lock(lock);
+		lock_rec_dequeue_from_page(lock);
+		lock_xlock_exit_lock(lock);
+	}
 }
 
 /*********************************************************************//**
@@ -4680,7 +4892,10 @@ lock_release(
 
 		if (lock_get_type_low(lock) == LOCK_REC) {
 
+			ulint fold = lock_rec_fold(lock->space(), lock->page_number());
+			lock_xlock_enter(fold);
 			lock_rec_dequeue_from_page(lock);
+			lock_xlock_exit(fold);
 		} else {
 			dict_table_t*	table;
 
@@ -4703,9 +4918,9 @@ lock_release(
 			/* Release the mutex for a while, so that we
 			do not monopolize it */
 
-			lock_mutex_exit();
-
-			lock_mutex_enter();
+//			lock_mutex_exit();
+//
+//			lock_mutex_enter();
 
 			count = 0;
 		}
@@ -5712,6 +5927,7 @@ lock_rec_queue_validate(
 	ut_ad(!index || dict_index_is_clust(index)
 	      || !dict_index_is_online_ddl(index));
 
+	std::cerr << "lock_rec_queue_validate" << std::endl;
 	heap_no = page_rec_get_heap_no(rec);
 
 	if (!locked_lock_trx_sys) {
@@ -5839,6 +6055,7 @@ lock_rec_validate_page(
 	rec_offs_init(offsets_);
 
 	ut_ad(lock_mutex_own());
+	std::cerr << "lock_rec_validate_page" << std::endl;
 
 	lock_mutex_enter();
 	mutex_enter(&trx_sys->mutex);
@@ -5963,6 +6180,8 @@ lock_rec_validate(
 	ut_ad(lock_mutex_own());
 	ut_ad(trx_sys_mutex_own());
 
+
+	std::cerr << "lock_rec_validate" << std::endl;
 	for (const lock_t* lock = static_cast<const lock_t*>(
 			HASH_GET_FIRST(lock_sys->rec_hash, start));
 	     lock != NULL;
@@ -6043,6 +6262,7 @@ lock_validate()
 	lock_mutex_enter();
 	mutex_enter(&trx_sys->mutex);
 
+	std::cerr << "lock_validate" << std::endl;
 	ut_a(lock_validate_table_locks(&trx_sys->rw_trx_list));
 
 	/* Iterate over all the record locks and validate the locks. We
@@ -6117,8 +6337,10 @@ lock_rec_insert_check_and_lock(
 	trx_t*		trx = thr_get_trx(thr);
 	const rec_t*	next_rec = page_rec_get_next_const(rec);
 	ulint		heap_no = page_rec_get_heap_no(next_rec);
+	ulint		fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 	/* Because this code is invoked for a running transaction by
 	the thread that is serving the transaction, it is not necessary
 	to hold trx->mutex here. */
@@ -6133,7 +6355,8 @@ lock_rec_insert_check_and_lock(
 	if (lock == NULL) {
 		/* We optimize CPU time usage in the simplest case */
 
-		lock_mutex_exit();
+		lock_xlock_exit(fold);
+//		lock_mutex_exit();
 
 		if (inherit_in && !dict_index_is_clust(index)) {
 			/* Update the page max trx id field */
@@ -6184,7 +6407,8 @@ lock_rec_insert_check_and_lock(
 		err = DB_SUCCESS;
 	}
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 
 	switch (err) {
 	case DB_SUCCESS_LOCKED_REC:
@@ -6244,8 +6468,10 @@ lock_rec_convert_impl_to_expl_for_trx(
 	ut_ad(trx_is_referenced(trx));
 
 	DEBUG_SYNC_C("before_lock_rec_convert_impl_to_expl_for_trx");
+	ulint fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 
 	ut_ad(!trx_state_eq(trx, TRX_STATE_NOT_STARTED));
 
@@ -6261,7 +6487,8 @@ lock_rec_convert_impl_to_expl_for_trx(
 			type_mode, block, heap_no, index, trx, FALSE);
 	}
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 
 	trx_release_reference(trx);
 
@@ -6338,6 +6565,7 @@ lock_clust_rec_modify_check_and_lock(
 {
 	dberr_t	err;
 	ulint	heap_no;
+	ulint fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(dict_index_is_clust(index));
@@ -6358,7 +6586,8 @@ lock_clust_rec_modify_check_and_lock(
 
 	lock_rec_convert_impl_to_expl(block, rec, index, offsets);
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 
 	ut_ad(lock_table_has(thr_get_trx(thr), index->table, LOCK_IX));
 
@@ -6367,7 +6596,8 @@ lock_clust_rec_modify_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 
 	ut_ad(lock_rec_queue_validate(FALSE, block, rec, index, offsets));
 
@@ -6400,6 +6630,7 @@ lock_sec_rec_modify_check_and_lock(
 {
 	dberr_t	err;
 	ulint	heap_no;
+	ulint fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
 	ut_ad(!dict_index_is_clust(index));
 	ut_ad(!dict_index_is_online_ddl(index) || (flags & BTR_CREATE_FLAG));
@@ -6419,7 +6650,8 @@ lock_sec_rec_modify_check_and_lock(
 	index record, and this would not have been possible if another active
 	transaction had modified this secondary index record. */
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 
 	ut_ad(lock_table_has(thr_get_trx(thr), index->table, LOCK_IX));
 
@@ -6428,7 +6660,8 @@ lock_sec_rec_modify_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 
 #ifdef UNIV_DEBUG
 	{
@@ -6491,6 +6724,7 @@ lock_sec_rec_read_check_and_lock(
 {
 	dberr_t	err;
 	ulint	heap_no;
+	ulint fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
 	ut_ad(!dict_index_is_clust(index));
 	ut_ad(!dict_index_is_online_ddl(index));
@@ -6519,7 +6753,8 @@ lock_sec_rec_read_check_and_lock(
 		lock_rec_convert_impl_to_expl(block, rec, index, offsets);
 	}
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 
 	ut_ad(mode != LOCK_X
 	      || lock_table_has(thr_get_trx(thr), index->table, LOCK_IX));
@@ -6531,7 +6766,8 @@ lock_sec_rec_read_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 
 	ut_ad(lock_rec_queue_validate(FALSE, block, rec, index, offsets));
 
@@ -6570,6 +6806,7 @@ lock_clust_rec_read_check_and_lock(
 {
 	dberr_t	err;
 	ulint	heap_no;
+	ulint fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
 
 	ut_ad(dict_index_is_clust(index));
 	ut_ad(block->frame == page_align(rec));
@@ -6592,7 +6829,8 @@ lock_clust_rec_read_check_and_lock(
 		lock_rec_convert_impl_to_expl(block, rec, index, offsets);
 	}
 
-	lock_mutex_enter();
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 
 	ut_ad(mode != LOCK_X
 	      || lock_table_has(thr_get_trx(thr), index->table, LOCK_IX));
@@ -6603,7 +6841,8 @@ lock_clust_rec_read_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 
 	ut_ad(lock_rec_queue_validate(FALSE, block, rec, index, offsets));
 
@@ -7042,7 +7281,7 @@ lock_trx_release_locks(
 
 		/* The transition of trx->state to TRX_STATE_COMMITTED_IN_MEMORY
 		is protected by both the lock_sys->mutex and the trx->mutex. */
-		lock_mutex_enter();
+//		lock_mutex_enter();
 	}
 
 	trx_mutex_enter(trx);
@@ -7069,7 +7308,7 @@ lock_trx_release_locks(
 
 		ut_a(release_lock);
 
-		lock_mutex_exit();
+//		lock_mutex_exit();
 
 		while (trx_is_referenced(trx)) {
 
@@ -7108,11 +7347,52 @@ lock_trx_release_locks(
 
 	trx_mutex_exit(trx);
 
+	size_t num_locks = 0;
+
+	for (lock_t *lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
+			 lock != NULL;
+			 lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+		num_locks++;
+	}
+	std::vector<lock_t *, ut_allocator<lock_t *>> locks(num_locks);
+	size_t start = 0;
+	size_t end = num_locks - 1;
+	for (lock_t *lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
+			 lock != NULL;
+			 lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+		if (lock_get_type_low(lock) == LOCK_TABLE||
+				lock_hash_get(lock->type_mode) != lock_sys->rec_hash) {
+			locks[start] = lock;
+			start++;
+		} else {
+			locks[end] = lock;
+			end--;
+		}
+	}
+
 	if (release_lock) {
 
-		lock_release(trx);
+//		lock_release(trx);
+
+		lock_release_table_prdt(trx, locks, start);
+
+		ut_a(UT_LIST_GET_LEN(trx->lock.trx_locks) == (num_locks - start));
+
+		for (size_t i = start; i < locks.size(); i++) {
+			lock_t *lock = locks[i];
+			UT_LIST_REMOVE(trx->lock.trx_locks, lock);
+		}
 
 		lock_mutex_exit();
+
+		lock_release_rec(trx, locks, start);
+
+//		for (lock_t *lock = UT_LIST_GET_LAST(trx->lock.trx_locks);
+//				 lock != nullptr;
+//				 lock = UT_LIST_GET_LAST(trx->lock.trx_locks)) {
+//			UT_LIST_REMOVE(trx->lock.trx_locks, lock);
+//		}
+		ut_a(UT_LIST_GET_LEN(trx->lock.trx_locks) == 0);
 	}
 
 	trx->lock.n_rec_locks = 0;
@@ -7142,7 +7422,9 @@ lock_trx_handle_wait(
 {
 	dberr_t	err;
 
-	lock_mutex_enter();
+	lock_t *lock = trx->lock.wait_lock;
+	//	lock_mutex_enter();
+	lock_xlock_enter_lock(lock);
 
 	trx_mutex_enter(trx);
 
@@ -7156,7 +7438,8 @@ lock_trx_handle_wait(
 		err = DB_SUCCESS;
 	}
 
-	lock_mutex_exit();
+	lock_xlock_exit_lock(lock);
+//	lock_mutex_exit();
 
 	trx_mutex_exit(trx);
 
@@ -7371,13 +7654,16 @@ lock_trx_has_rec_x_lock(
 {
 	ut_ad(heap_no > PAGE_HEAP_NO_SUPREMUM);
 
-	lock_mutex_enter();
+	ulint fold = lock_rec_fold(block->page.id.space(), block->page.id.page_no());
+//	lock_mutex_enter();
+	lock_xlock_enter(fold);
 	ut_a(lock_table_has(trx, table, LOCK_IX)
 	     || dict_table_is_temporary(table));
 	ut_a(lock_rec_has_expl(LOCK_X | LOCK_REC_NOT_GAP,
 			       block, heap_no, trx)
 	     || dict_table_is_temporary(table));
-	lock_mutex_exit();
+	lock_xlock_exit(fold);
+//	lock_mutex_exit();
 	return(true);
 }
 #endif /* UNIV_DEBUG */
@@ -7687,6 +7973,7 @@ DeadlockChecker::search()
 
 			/* Found a cycle. */
 
+			exit_all();
 			notify(lock);
 
 			return(select_victim());
@@ -7695,6 +7982,7 @@ DeadlockChecker::search()
 
 			/* Search too deep to continue. */
 			m_too_deep = true;
+			exit_all();
 			return(m_start);
 
 		} else if (lock->trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
@@ -7706,11 +7994,22 @@ DeadlockChecker::search()
 
 			if (!push(lock, heap_no)) {
 				m_too_deep = true;
+				exit_all();
 				return(m_start);
 			}
 
-
 			m_wait_lock = lock->trx->lock.wait_lock;
+
+			if (lock_get_type(m_wait_lock) == LOCK_REC) {
+				ulint new_fold = lock_rec_fold(m_wait_lock->space(), m_wait_lock->page_number());
+				if (folds.find(new_fold) == folds.end()) {
+					folds.insert(new_fold);
+					if (lock_slock_enter_lock(lock->trx->lock.wait_lock)) {
+						exit_all();
+						return m_start;
+					}
+				}
+			}
 
 			lock = get_first_lock(&heap_no);
 
@@ -7725,6 +8024,7 @@ DeadlockChecker::search()
 
 	ut_a(lock == NULL && m_n_elems == 0);
 
+	exit_all();
 	/* No deadlock found. */
 	return(0);
 }
@@ -7761,8 +8061,12 @@ DeadlockChecker::trx_rollback()
 	ut_ad(lock_mutex_own());
 
 	trx_t*	trx = m_wait_lock->trx;
+	lock_t	*lock = trx->lock.wait_lock;
+	ulint		fold = lock_rec_fold(lock->space(), lock->page_number());
 
 	print("*** WE ROLL BACK TRANSACTION (1)\n");
+
+	lock_xlock_enter(fold);
 
 	trx_mutex_enter(trx);
 
@@ -7771,6 +8075,8 @@ DeadlockChecker::trx_rollback()
 	lock_cancel_waiting_and_release(trx->lock.wait_lock);
 
 	trx_mutex_exit(trx);
+
+	lock_xlock_exit(fold);
 }
 
 /** Checks if a joining lock request results in a deadlock. If a deadlock is

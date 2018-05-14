@@ -105,6 +105,7 @@ extern mysql_pfs_key_t	trx_undo_mutex_key;
 extern mysql_pfs_key_t	trx_mutex_key;
 extern mysql_pfs_key_t	trx_pool_mutex_key;
 extern mysql_pfs_key_t	trx_pool_manager_mutex_key;
+extern mysql_pfs_key_t	lock_rw_key;
 extern mysql_pfs_key_t	lock_mutex_key;
 extern mysql_pfs_key_t	lock_mutex1_key;
 extern mysql_pfs_key_t	lock_mutex2_key;

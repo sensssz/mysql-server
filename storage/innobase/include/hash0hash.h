@@ -32,10 +32,15 @@ Created 5/20/1997 Heikki Tuuri
 # include "sync0rw.h"
 #endif /* !UNIV_HOTBACKUP */
 
+#include <pthread.h>
+#include <chrono>
+
 struct hash_table_t;
 struct hash_cell_t;
 
 typedef void*	hash_node_t;
+
+using time_point_t = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
 /* Fix Bug #13859: symbol collision between imap/mysql */
 #define hash_create hash0_create
@@ -48,8 +53,10 @@ enum hash_table_sync_t {
 					this hash_table. */
 	HASH_TABLE_SYNC_MUTEX,		/*!< Use mutexes to control
 					access to this hash_table. */
-	HASH_TABLE_SYNC_RW_LOCK		/*!< Use rw_locks to control
+	HASH_TABLE_SYNC_RW_LOCK,	/*!< Use rw_locks to control
 					access to this hash_table. */
+	HASH_TABLE_SYNC_PRW_LOCK,	/*!< Use prw_locks to control
+					 access to this hash_table. */
 };
 
 /*************************************************************//**
@@ -510,6 +517,35 @@ hash_unlock_x_all_but(
 	hash_table_t*	table,		/*!< in: hash table */
 	rw_lock_t*	keep_lock);	/*!< in: lock to keep */
 
+/************************************************************//**
+s-lock a lock for a fold value in a hash table. */
+bool
+hash_plock_s(
+/*========*/
+	hash_table_t*	table,	/*!< in: hash table */
+	ulint		fold);					/*!< in: fold */
+/************************************************************//**
+x-lock a lock for a fold value in a hash table. */
+bool
+hash_plock_x(
+/*========*/
+	hash_table_t*	table,	/*!< in: hash table */
+	ulint		fold);					/*!< in: fold */
+/************************************************************//**
+unlock an s-lock for a fold value in a hash table. */
+void
+hash_punlock_s(
+/*==========*/
+	hash_table_t*	table,	/*!< in: hash table */
+	ulint		fold);					/*!< in: fold */
+/************************************************************//**
+unlock x-lock for a fold value in a hash table. */
+void
+hash_punlock_x(
+/*==========*/
+	hash_table_t*	table,	/*!< in: hash table */
+	ulint		fold);					/*!< in: fold */
+
 #else /* !UNIV_HOTBACKUP */
 # define hash_get_heap(table, fold)	((table)->heap)
 # define hash_mutex_enter(table, fold)	((void) 0)
@@ -555,7 +591,9 @@ struct hash_table_t {
 		rw_lock_t*	rw_locks;/* NULL, or an array of rw_lcoks
 					used to protect segments of the
 					hash table */
+		pthread_rwlock_t *prw_locks;
 	} sync_obj;
+	time_point_t *start_times;
 
 	mem_heap_t**		heaps;	/*!< if this is non-NULL, hash
 					chain nodes for external chaining

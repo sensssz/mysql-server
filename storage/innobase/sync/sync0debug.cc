@@ -1614,6 +1614,8 @@ sync_latch_meta_init()
 	LATCH_ADD_RWLOCK(DICT_TABLE_STATS, SYNC_INDEX_TREE,
 			 dict_table_stats_key);
 
+	LATCH_ADD_RWLOCK(LOCK_SYS_HASH, SYNC_LOCK_SYS_HASH, lock_rw_key);
+
 	LATCH_ADD_RWLOCK(HASH_TABLE_RW_LOCK, SYNC_BUF_PAGE_HASH,
 			 hash_table_locks_key);
 

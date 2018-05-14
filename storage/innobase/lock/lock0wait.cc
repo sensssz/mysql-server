@@ -452,20 +452,24 @@ lock_wait_check_and_cancel(
 		possible that the lock has already been
 		granted: in that case do nothing */
 
-		lock_mutex_enter();
+//		lock_mutex_enter();
 
 		trx_mutex_enter(trx);
 
 		if (trx->lock.wait_lock != NULL && !trx_is_high_priority(trx)) {
 
 			ut_a(trx->lock.que_state == TRX_QUE_LOCK_WAIT);
+			lock_t *lock = trx->lock.wait_lock;
+			ulint fold = lock_rec_fold(lock->space(), lock->page_number());
 
+			lock_xlock_enter(fold);
 			lock_cancel_waiting_and_release(trx->lock.wait_lock);
+			lock_xlock_exit(fold);
 		}
 
 		lock_mutex_exit();
 
-		trx_mutex_exit(trx);
+//		trx_mutex_exit(trx);
 	}
 
 }

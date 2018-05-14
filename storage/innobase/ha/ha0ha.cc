@@ -179,6 +179,15 @@ ha_clear(
 		table->sync_obj.rw_locks = NULL;
 		break;
 
+	case HASH_TABLE_SYNC_PRW_LOCK:
+		for (ulint i = 0; i < table->n_sync_obj; ++i) {
+			pthread_rwlock_destroy(&table->sync_obj.prw_locks[i]);
+		}
+
+		ut_free(table->sync_obj.prw_locks);
+		table->sync_obj.prw_locks = NULL;
+		break;
+
 	case HASH_TABLE_SYNC_NONE:
 		/* do nothing */
 		break;

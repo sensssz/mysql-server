@@ -32,6 +32,10 @@ Created 5/20/1997 Heikki Tuuri
 #include "mem0mem.h"
 #include "sync0sync.h"
 
+using time_point_t = std::chrono::time_point<std::chrono::high_resolution_clock>;
+
+static const ulint kLockTimeout = 1;
+
 #ifndef UNIV_HOTBACKUP
 
 /************************************************************//**
@@ -249,6 +253,107 @@ hash_unlock_x_all_but(
 	}
 }
 
+/************************************************************//**
+s-lock a lock for a fold value in a hash table. */
+bool
+hash_plock_s(
+/*========*/
+	hash_table_t*	table,	/*!< in: hash table */
+	ulint		fold)					/*!< in: fold */
+{
+	pthread_rwlock_t* lock = hash_get_plock(table, fold);
+
+	ut_ad(table->type == HASH_TABLE_SYNC_PRW_LOCK);
+	ut_ad(lock);
+
+	int lock_result = pthread_rwlock_tryrdlock(lock);
+	if (lock_result == EDEADLK) {
+		std::cerr << "Deadlock found for lock " << lock << std::endl;
+		return true;
+	} else if (lock_result != 0) {
+		timespec timeout;
+		timeout.tv_sec = 0;
+		timeout.tv_nsec = 500000;
+		lock_result = pthread_rwlock_timedrdlock(lock, &timeout);
+		if (lock_result == ETIMEDOUT) {
+			std::cerr << "Timeout for lock " << lock << std::endl;
+			return true;
+		} else if (lock_result == EDEADLK) {
+			std::cerr << "Deadlock found for lock " << lock << std::endl;
+			return true;
+		}
+//		pthread_rwlock_rdlock(lock);
+	}
+	return false;
+}
+
+/************************************************************//**
+x-lock a lock for a fold value in a hash table. */
+bool
+hash_plock_x(
+/*========*/
+	hash_table_t*	table,	/*!< in: hash table */
+	ulint		fold)					/*!< in: fold */
+{
+	pthread_rwlock_t* lock = hash_get_plock(table, fold);
+
+	ut_ad(table->type == HASH_TABLE_SYNC_PRW_LOCK);
+	ut_ad(lock);
+
+	int lock_result = pthread_rwlock_trywrlock(lock);
+	if (lock_result == EDEADLK) {
+		std::cerr << "Deadlock found for lock " << lock << std::endl;
+		return true;
+	} else if (lock_result != 0) {
+		timespec timeout;
+		timeout.tv_sec = 0;
+		timeout.tv_nsec = 500000;
+		lock_result = pthread_rwlock_timedwrlock(lock, &timeout);
+		if (lock_result == ETIMEDOUT) {
+			std::cerr << "Timeout for lock " << lock << std::endl;
+			return true;
+		} else if (lock_result == EDEADLK) {
+			std::cerr << "Deadlock found for lock " << lock << std::endl;
+			return true;
+		}
+//		pthread_rwlock_wrlock(lock);
+	}
+	return false;
+}
+
+/************************************************************//**
+unlock an s-lock for a fold value in a hash table. */
+void
+hash_punlock_s(
+/*==========*/
+	hash_table_t*	table,	/*!< in: hash table */
+	ulint		fold)					/*!< in: fold */
+{
+
+	pthread_rwlock_t* lock = hash_get_plock(table, fold);
+
+	ut_ad(table->type == HASH_TABLE_SYNC_PRW_LOCK);
+	ut_ad(lock);
+
+	pthread_rwlock_unlock(lock);
+}
+
+/************************************************************//**
+unlock x-lock for a fold value in a hash table. */
+void
+hash_punlock_x(
+/*==========*/
+	hash_table_t*	table,	/*!< in: hash table */
+	ulint		fold)					/*!< in: fold */
+{
+	pthread_rwlock_t* lock = hash_get_plock(table, fold);
+
+	ut_ad(table->type == HASH_TABLE_SYNC_PRW_LOCK);
+	ut_ad(lock);
+
+	pthread_rwlock_unlock(lock);
+}
+
 #endif /* !UNIV_HOTBACKUP */
 
 /*************************************************************//**
@@ -356,10 +461,21 @@ hash_create_sync_obj(
 		break;
 	}
 
+	case HASH_TABLE_SYNC_PRW_LOCK:
+
+		table->sync_obj.prw_locks = static_cast<pthread_rwlock_t*>(
+			ut_malloc_nokey(n_sync_obj * sizeof(pthread_rwlock_t)));
+		for (ulint i = 0; i < n_sync_obj; i++) {
+			pthread_rwlock_init(table->sync_obj.prw_locks + i, nullptr);
+		}
+		break;
+
 	case HASH_TABLE_SYNC_NONE:
 		ut_error;
 	}
 
+	table->start_times = static_cast<time_point_t*>(
+		ut_malloc_nokey(n_sync_obj * sizeof(time_point_t)));
 	table->n_sync_obj = n_sync_obj;
 }
 #endif /* !UNIV_HOTBACKUP */

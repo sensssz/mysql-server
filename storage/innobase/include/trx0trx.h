@@ -26,6 +26,7 @@ Created 3/26/1996 Heikki Tuuri
 #ifndef trx0trx_h
 #define trx0trx_h
 
+#include <chrono>
 #include <set>
 #include <list>
 
@@ -1096,6 +1097,7 @@ struct trx_t {
 
 	time_t		start_time;	/*!< time the state last time became
 					TRX_STATE_ACTIVE */
+	std::chrono::time_point<std::chrono::high_resolution_clock> trx_start_nano;
 	lsn_t		commit_lsn;	/*!< lsn at the time of the commit */
 	table_id_t	table_id;	/*!< Table to drop iff dict_operation
 					== TRX_DICT_OP_TABLE, or 0. */
