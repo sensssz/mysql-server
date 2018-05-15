@@ -113,6 +113,7 @@ struct lock_t {
 	UT_LIST_NODE_T(lock_t)
 			trx_locks;	/*!< list of the locks of the
 					transaction */
+	bool			is_global_lock;
 
 	dict_index_t*	index;		/*!< index for a record lock */
 

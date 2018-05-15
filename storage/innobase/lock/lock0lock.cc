@@ -50,6 +50,27 @@ Created 5/7/1996 Heikki Tuuri
 #include "pars0pars.h"
 
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
+
+#include <pthread.h>
+
+#if (_WIN64 || _WIN32)	//  Windows
+
+#include <intrin.h>
+uint64_t rdtsc(){
+	return __rdtsc();
+}
+
+#else	//  Linux/GCC
+
+uint64_t rdtsc(){
+	unsigned int lo, hi;
+	__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+	return ((uint64_t)hi << 32) | lo;
+}
+
+#endif
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
@@ -65,6 +86,60 @@ static const ulint	TABLE_LOCK_CACHE = 8;
 
 /** Size in bytes, of the table lock instance */
 static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
+
+static const ulint POPULARITY_THRESHOLD = 2000;
+
+struct rec_id_t {
+	ulint space;
+	ulint page_no;
+	ulint heap_no;
+	rec_id_t(ulint space_in, ulint page_no_in, ulint heap_no_in) :
+		space(space_in), page_no(page_no_in), heap_no(heap_no_in) {}
+};
+
+struct rec_stat_t {
+	ulint last_access;
+	bool	is_popular;
+	rec_stat_t() : last_access(rdtsc()), is_popular(false) {}
+};
+
+namespace std {
+template <>
+struct hash<rec_id_t>
+{
+	std::size_t operator()(const rec_id_t& key) const {
+		return lock_rec_fold(key.space, key.page_no) ^ key.heap_no;
+	}
+};
+}
+
+std::unordered_map<rec_id_t, rec_stat_t> rec_stats;
+std::unordered_set<rec_id_t> popular_recs;
+pthread_rwlock_t global_lock = PTHREAD_RWLOCK_INITIALIZER;
+
+static
+void
+lock_global_lock(
+	ulint lock_mode,
+	que_thr_t	*thr,
+	dberr_t &err) {
+	if (err == DB_DEADLOCK ||
+			err == DB_QUE_THR_SUSPENDED ||
+			lock_mode == 0) {
+		return;
+	}
+	trx_t *trx = thr_get_trx(thr);
+	err = DB_SUCCESS_LOCKED_REC;
+	if (trx->has_global_lock) {
+		return;
+	}
+	trx->has_global_lock = true;
+	if (lock_mode == LOCK_S) {
+		pthread_rwlock_rdlock(&global_lock);
+	} else if (lock_mode == LOCK_X) {
+		pthread_rwlock_wrlock(&global_lock);
+	}
+}
 
 /** Deadlock checker. */
 class DeadlockChecker {
@@ -1452,6 +1527,8 @@ RecLock::lock_alloc(
 
 	lock->index = index;
 
+	lock->is_global_lock = false;
+
 	/* Setup the lock attributes */
 
 	lock->type_mode = LOCK_REC | (mode & ~LOCK_TYPE_MASK);
@@ -2010,6 +2087,25 @@ lock_rec_lock_slow(
 	trx_mutex_exit(trx);
 
 	return(err);
+}
+
+ulint lock_global_lock_mode(
+	ulint mode,
+	const buf_block_t *block,
+	ulint heap_no)
+{
+	ulint now = rdtsc();
+	rec_id_t rec_id(block->page.id.space(), block->page.id.page_no(), heap_no);
+	rec_stat_t &rec_stat = rec_stats[rec_id];
+	rec_stat.is_popular = (now - rec_stat.last_access <= POPULARITY_THRESHOLD);
+	if(rec_stat.is_popular) {
+		if (mode & LOCK_S) {
+			return LOCK_S;
+		} else if (mode & LOCK_X) {
+			return LOCK_X;
+		}
+	}
+	return 0;
 }
 
 /*********************************************************************//**
@@ -6161,12 +6257,18 @@ lock_clust_rec_modify_check_and_lock(
 
 	ut_ad(lock_table_has(thr_get_trx(thr), index->table, LOCK_IX));
 
-	err = lock_rec_lock(TRUE, LOCK_X | LOCK_REC_NOT_GAP,
+	ulint mode = LOCK_X | LOCK_REC_NOT_GAP;
+
+	err = lock_rec_lock(TRUE, mode,
 			    block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
+	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no);
+
 	lock_mutex_exit();
+
+	lock_global_lock(lock_mode, thr, err);
 
 	ut_ad(lock_rec_queue_validate(FALSE, block, rec, index, offsets));
 
@@ -6227,7 +6329,11 @@ lock_sec_rec_modify_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
+	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no);
+
 	lock_mutex_exit();
+
+	lock_global_lock(lock_mode, thr, err);
 
 #ifdef UNIV_DEBUG
 	{
@@ -6330,7 +6436,11 @@ lock_sec_rec_read_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
+	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no);
+
 	lock_mutex_exit();
+
+	lock_global_lock(lock_mode, thr, err);
 
 	ut_ad(lock_rec_queue_validate(FALSE, block, rec, index, offsets));
 
@@ -6402,7 +6512,11 @@ lock_clust_rec_read_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
+	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no);
+
 	lock_mutex_exit();
+
+	lock_global_lock(lock_mode, thr, err);
 
 	ut_ad(lock_rec_queue_validate(FALSE, block, rec, index, offsets));
 
@@ -6814,6 +6928,11 @@ lock_trx_release_locks(
 	trx_t*	trx)	/*!< in/out: transaction */
 {
 	check_trx_state(trx);
+
+	if (trx->has_global_lock) {
+		pthread_rwlock_unlock(&global_lock);
+		trx->has_global_lock = true;
+	}
 
 	if (trx_state_eq(trx, TRX_STATE_PREPARED)) {
 

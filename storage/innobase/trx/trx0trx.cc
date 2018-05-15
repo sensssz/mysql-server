@@ -1367,6 +1367,8 @@ trx_start_low(
 	/* The initial value for trx->no: TRX_ID_MAX is used in
 	read_view_open_now: */
 
+	trx->has_global_lock = false;
+
 	trx->no = TRX_ID_MAX;
 
 	ut_a(ib_vector_is_empty(trx->autoinc_locks));

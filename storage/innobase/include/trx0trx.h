@@ -911,6 +911,7 @@ struct trx_t {
 	bool		abort;		/*!< if this flag is set then
 					this transaction must abort when
 					it can */
+	bool		has_global_lock;
 
 	trx_id_t	id;		/*!< transaction id */
 
