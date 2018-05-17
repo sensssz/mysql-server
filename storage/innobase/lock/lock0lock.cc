@@ -130,7 +130,6 @@ ulint lock_global_lock_mode(
 	rec_id_t rec_id(block->page.id.space(), block->page.id.page_no(), heap_no);
 	rec_stat_t &rec_stat = rec_stats[rec_id];
 	rec_stat.is_popular = (now - rec_stat.last_access <= POPULARITY_THRESHOLD);
-	is_popular = rec_stat.is_popular;
 	rec_stat.last_access = now;
 	if(rec_stat.is_popular) {
 		if (mode & LOCK_S) {
