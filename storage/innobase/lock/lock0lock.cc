@@ -120,7 +120,6 @@ struct hash<rec_id_t>
 std::unordered_map<rec_id_t, rec_stat_t> rec_stats;
 std::unordered_set<rec_id_t> popular_recs;
 pthread_rwlock_t global_lock = PTHREAD_RWLOCK_INITIALIZER;
-thread_local is_popular = false;
 
 ulint lock_global_lock_mode(
 	ulint mode,
