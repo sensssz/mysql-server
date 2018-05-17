@@ -95,6 +95,10 @@ struct rec_id_t {
 	ulint heap_no;
 	rec_id_t(ulint space_in, ulint page_no_in, ulint heap_no_in) :
 		space(space_in), page_no(page_no_in), heap_no(heap_no_in) {}
+
+	bool operator==(const rec_id_t &other) const {
+		return space == other.space && page_no == other.page_no && heap_no == other.heap_no;
+	}
 };
 
 struct rec_stat_t {
@@ -116,6 +120,28 @@ struct hash<rec_id_t>
 std::unordered_map<rec_id_t, rec_stat_t> rec_stats;
 std::unordered_set<rec_id_t> popular_recs;
 pthread_rwlock_t global_lock = PTHREAD_RWLOCK_INITIALIZER;
+thread_local is_popular = false;
+
+ulint lock_global_lock_mode(
+	ulint mode,
+	const buf_block_t *block,
+	ulint heap_no)
+{
+	ulint now = rdtsc();
+	rec_id_t rec_id(block->page.id.space(), block->page.id.page_no(), heap_no);
+	rec_stat_t &rec_stat = rec_stats[rec_id];
+	rec_stat.is_popular = (now - rec_stat.last_access <= POPULARITY_THRESHOLD);
+	is_popular = rec_stat.is_popular;
+	rec_stat.last_access = now;
+	if(rec_stat.is_popular) {
+		if (mode & LOCK_S) {
+			return LOCK_S;
+		} else if (mode & LOCK_X) {
+			return LOCK_X;
+		}
+	}
+	return 0;
+}
 
 static
 void
@@ -2087,25 +2113,6 @@ lock_rec_lock_slow(
 	trx_mutex_exit(trx);
 
 	return(err);
-}
-
-ulint lock_global_lock_mode(
-	ulint mode,
-	const buf_block_t *block,
-	ulint heap_no)
-{
-	ulint now = rdtsc();
-	rec_id_t rec_id(block->page.id.space(), block->page.id.page_no(), heap_no);
-	rec_stat_t &rec_stat = rec_stats[rec_id];
-	rec_stat.is_popular = (now - rec_stat.last_access <= POPULARITY_THRESHOLD);
-	if(rec_stat.is_popular) {
-		if (mode & LOCK_S) {
-			return LOCK_S;
-		} else if (mode & LOCK_X) {
-			return LOCK_X;
-		}
-	}
-	return 0;
 }
 
 /*********************************************************************//**
@@ -6324,7 +6331,9 @@ lock_sec_rec_modify_check_and_lock(
 
 	ut_ad(lock_table_has(thr_get_trx(thr), index->table, LOCK_IX));
 
-	err = lock_rec_lock(TRUE, LOCK_X | LOCK_REC_NOT_GAP,
+	ulint mode = LOCK_X | LOCK_REC_NOT_GAP;
+
+	err = lock_rec_lock(TRUE, mode,
 			    block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
@@ -6436,7 +6445,7 @@ lock_sec_rec_read_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no);
+	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no);
 
 	lock_mutex_exit();
 
@@ -6512,7 +6521,7 @@ lock_clust_rec_read_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no);
+	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no);
 
 	lock_mutex_exit();
 
