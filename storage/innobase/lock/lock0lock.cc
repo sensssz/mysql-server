@@ -6304,7 +6304,7 @@ lock_clust_rec_modify_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no);
+	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
 
 	lock_mutex_exit();
 
@@ -6371,7 +6371,7 @@ lock_sec_rec_modify_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no);
+	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
 
 	lock_mutex_exit();
 
@@ -6478,7 +6478,7 @@ lock_sec_rec_read_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no);
+	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
 
 	lock_mutex_exit();
 
@@ -6554,7 +6554,7 @@ lock_clust_rec_read_check_and_lock(
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
-	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no);
+	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
 
 	lock_mutex_exit();
 
