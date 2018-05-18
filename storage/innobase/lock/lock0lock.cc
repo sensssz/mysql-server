@@ -102,9 +102,10 @@ struct rec_id_t {
 };
 
 struct rec_stat_t {
+	ulint num_holding;
 	ulint last_access;
 	bool	is_popular;
-	rec_stat_t() : last_access(rdtsc()), is_popular(false) {}
+	rec_stat_t() : num_holding(0), last_access(0), is_popular(false) {}
 };
 
 namespace std {
@@ -118,20 +119,34 @@ struct hash<rec_id_t>
 }
 
 std::unordered_map<rec_id_t, rec_stat_t> rec_stats;
-std::unordered_set<rec_id_t> popular_recs;
 pthread_rwlock_t global_lock = PTHREAD_RWLOCK_INITIALIZER;
+thread_local bool curr_is_popular = false;
 
 ulint lock_global_lock_mode(
 	ulint mode,
 	const buf_block_t *block,
-	ulint heap_no)
+	ulint heap_no,
+	que_thr_t	*thr)
 {
 	ulint now = rdtsc();
 	rec_id_t rec_id(block->page.id.space(), block->page.id.page_no(), heap_no);
 	rec_stat_t &rec_stat = rec_stats[rec_id];
-	rec_stat.is_popular = (now - rec_stat.last_access <= POPULARITY_THRESHOLD);
+	bool is_popular = (now - rec_stat.last_access <= POPULARITY_THRESHOLD);
+	if (!rec_stat.is_popular) {
+		rec_stat.is_popular = is_popular;
+	} else if (!is_popular && rec_stat.num_holding == 0) {
+		rec_stat.is_popular = is_popular;
+	}
+	curr_is_popular = rec_stat.is_popular;
 	rec_stat.last_access = now;
 	if(rec_stat.is_popular) {
+		trx_t *trx = thr_get_trx(thr);
+		if ((mode & LOCK_S || mode & LOCK_X) && !trx->has_global_lock) {
+			// We set the stats here so it's protected by lock_sys mutex, but leave the
+			// actual locking out of this function to avoid potential deadlocks.
+			// Also note that we don't set has_global_lock to true here.
+			rec_stat.num_holding++;
+		}
 		if (mode & LOCK_S) {
 			return LOCK_S;
 		} else if (mode & LOCK_X) {
@@ -2151,6 +2166,10 @@ lock_rec_lock(
 	      || mode - (LOCK_MODE_MASK & mode) == 0);
 	ut_ad(dict_index_is_clust(index) || !dict_index_is_online_ddl(index));
 
+	if (curr_is_popular) {
+		return DB_SUCCESS_LOCKED_REC;
+	}
+
 	/* We try a simplified and faster subroutine for the most
 	common cases */
 	switch (lock_rec_lock_fast(impl, mode, block, heap_no, index, thr)) {
@@ -2598,6 +2617,17 @@ lock_rec_dequeue_from_page(
 
 	MONITOR_INC(MONITOR_RECLOCK_REMOVED);
 	MONITOR_DEC(MONITOR_NUM_RECLOCK);
+
+	for (ulint heap_no = 0; heap_no < lock_rec_get_n_bits(in_lock); heap_no++) {
+		if (!lock_rec_get_nth_bit(in_lock, heap_no)) {
+			continue;
+		}
+		rec_id_t rec_id(space, page_no, heap_no);
+		rec_stat_t &rec_stat = rec_stats[rec_id];
+		if (rec_stat.is_popular) {
+			rec_stats[rec_id].num_holding--;
+		}
+	}
 
 	lock_rec_grant(in_lock);
 }
@@ -4611,6 +4641,11 @@ lock_release(
 		}
 
 		++count;
+	}
+
+	if (trx->has_global_lock) {
+		pthread_rwlock_unlock(&global_lock);
+		trx->has_global_lock = false;
 	}
 }
 
@@ -6935,11 +6970,6 @@ lock_trx_release_locks(
 	trx_t*	trx)	/*!< in/out: transaction */
 {
 	check_trx_state(trx);
-
-	if (trx->has_global_lock) {
-		pthread_rwlock_unlock(&global_lock);
-		trx->has_global_lock = true;
-	}
 
 	if (trx_state_eq(trx, TRX_STATE_PREPARED)) {
 
