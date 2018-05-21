@@ -142,7 +142,7 @@ ulint lock_global_lock_mode(
 	rec_stat.last_access = now;
 	if(rec_stat.is_popular) {
 		trx_t *trx = thr_get_trx(thr);
-		if ((mode & LOCK_S || mode & LOCK_X) && !trx->has_global_lock) {
+		if ((mode & LOCK_S || mode & LOCK_X) && trx->global_lock_mode == 0) {
 			// We set the stats here so it's protected by lock_sys mutex, but leave the
 			// actual locking out of this function to avoid potential deadlocks.
 			// Also note that we don't set has_global_lock to true here.
@@ -168,17 +168,34 @@ lock_global_lock(
 			lock_mode == 0) {
 		return;
 	}
+	static bool print = true;
 	trx_t *trx = thr_get_trx(thr);
 	err = DB_SUCCESS_LOCKED_REC;
-	if (trx->has_global_lock) {
+	if (trx->global_lock_mode == lock_mode) {
+		// Already holding the lock in the required mode,
+		// no need to do anything
 		return;
 	}
-	trx->has_global_lock = true;
-	if (lock_mode == LOCK_S) {
-		pthread_rwlock_rdlock(&global_lock);
-	} else if (lock_mode == LOCK_X) {
-		pthread_rwlock_wrlock(&global_lock);
+	if (print) {
+		std::cerr << "Acquring lock" << std::endl;
+		print = false;
 	}
+	if (trx->global_lock_mode == 0) {
+		if (lock_mode == LOCK_S) {
+			pthread_rwlock_rdlock(&global_lock);
+		} else if (lock_mode == LOCK_X) {
+			pthread_rwlock_wrlock(&global_lock);
+		}
+		trx->global_lock_mode = lock_mode;
+	} else if (trx->global_lock_mode == LOCK_S) {
+		// Need to upgrade the lock to X lock
+		// To prevent deadlock, unlock it lock it
+		pthread_rwlock_unlock(&global_lock);
+		pthread_rwlock_wrlock(&global_lock);
+		trx->global_lock_mode = lock_mode;
+	}
+	// Else, we already have a write lock, which
+	// is strong enough for the required read lock
 }
 
 /** Deadlock checker. */
@@ -2166,8 +2183,13 @@ lock_rec_lock(
 	      || mode - (LOCK_MODE_MASK & mode) == LOCK_REC_NOT_GAP
 	      || mode - (LOCK_MODE_MASK & mode) == 0);
 	ut_ad(dict_index_is_clust(index) || !dict_index_is_online_ddl(index));
+	static bool print = true;
 
 	if (curr_is_popular) {
+		if (print) {
+			std::cerr << "Current is popular" << std::endl;
+			print = false;
+		}
 		return DB_SUCCESS_LOCKED_REC;
 	}
 
@@ -4644,9 +4666,9 @@ lock_release(
 		++count;
 	}
 
-	if (trx->has_global_lock) {
+	if (trx->global_lock_mode != 0) {
 		pthread_rwlock_unlock(&global_lock);
-		trx->has_global_lock = false;
+		trx->global_lock_mode = 0;
 	}
 }
 
@@ -6300,12 +6322,12 @@ lock_clust_rec_modify_check_and_lock(
 
 	ulint mode = LOCK_X | LOCK_REC_NOT_GAP;
 
+	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
+
 	err = lock_rec_lock(TRUE, mode,
 			    block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
-
-	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
 
 	lock_mutex_exit();
 
@@ -6367,12 +6389,12 @@ lock_sec_rec_modify_check_and_lock(
 
 	ulint mode = LOCK_X | LOCK_REC_NOT_GAP;
 
+	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
+
 	err = lock_rec_lock(TRUE, mode,
 			    block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
-
-	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
 
 	lock_mutex_exit();
 
@@ -6474,12 +6496,12 @@ lock_sec_rec_read_check_and_lock(
 	ut_ad(mode != LOCK_S
 	      || lock_table_has(thr_get_trx(thr), index->table, LOCK_IS));
 
+	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
+
 	err = lock_rec_lock(FALSE, mode | gap_mode,
 			    block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
-
-	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
 
 	lock_mutex_exit();
 
@@ -6551,11 +6573,11 @@ lock_clust_rec_read_check_and_lock(
 	ut_ad(mode != LOCK_S
 	      || lock_table_has(thr_get_trx(thr), index->table, LOCK_IS));
 
+	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
+
 	err = lock_rec_lock(FALSE, mode | gap_mode, block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
-
-	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
 
 	lock_mutex_exit();
 
