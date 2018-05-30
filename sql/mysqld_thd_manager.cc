@@ -26,6 +26,8 @@
 int Global_THD_manager::global_thd_count= 0;
 Global_THD_manager *Global_THD_manager::thd_manager = NULL;
 
+ulong num_workers;
+
 /**
   Internal class used in do_for_all_thd() and do_for_all_thd_copy()
   implementation.
@@ -169,6 +171,10 @@ void Global_THD_manager::add_thd(THD *thd)
   // Adding the same THD twice is an error.
   DBUG_ASSERT(insert_result.second);
   mysql_mutex_unlock(&LOCK_thd_list);
+
+	if (insert_result.second) {
+		thds.enqueue(thd);
+	}
 }
 
 
@@ -198,6 +204,10 @@ void Global_THD_manager::remove_thd(THD *thd)
   mysql_mutex_unlock(&LOCK_thd_list);
 }
 
+void Global_THD_manager::create_workers()
+{
+	
+}
 
 my_thread_id Global_THD_manager::get_new_thread_id()
 {

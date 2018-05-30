@@ -2329,6 +2329,17 @@ static Sys_var_ulong Sys_max_connections(
        /* max_connections is used as a sizing hint by the performance schema. */
        sys_var::PARSE_EARLY);
 
+static Sys_var_ulong Sys_num_workers(
+       "num_workers", "The number of worker threads",
+       GLOBAL_VAR(num_workers), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(1, 1000),
+       DEFAULT(32),
+       BLOCK_SIZE(1),
+       NO_MUTEX_GUARD,
+       NOT_IN_BINLOG,
+       ON_CHECK(0),
+       ON_UPDATE(0));
+
 static Sys_var_ulong Sys_max_connect_errors(
        "max_connect_errors",
        "If there is more than this number of interrupted connections from "

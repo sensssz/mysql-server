@@ -218,6 +218,47 @@ static THD* init_new_thd(Channel_info *channel_info)
   return thd;
 }
 
+static void create_thd(Channel_info *channel_info)
+{
+	Global_THD_manager *thd_manager= Global_THD_manager::get_instance();
+	Connection_handler_manager *handler_manager= Connection_handler_manager::get_instance();
+
+	if (my_thread_init())
+	{
+		connection_errors_internal++;
+		channel_info->send_error_and_close_channel(ER_OUT_OF_RESOURCES, 0, false);
+		handler_manager->inc_aborted_connects();
+		Connection_handler_manager::dec_connection_count();
+		delete channel_info;
+		return;
+	}
+
+	THD *thd= init_new_thd(channel_info);
+	if (thd == NULL)
+	{
+		connection_errors_internal++;
+		handler_manager->inc_aborted_connects();
+		Connection_handler_manager::dec_connection_count();
+		delete channel_info;
+		return;
+	}
+
+	if (thd_prepare_connection(thd))
+	{
+		handler_manager->inc_aborted_connects();
+		close_connection(thd, 0, false, false);
+		thd->get_stmt_da()->reset_diagnostics_area();
+		thd->release_resources();
+		Connection_handler_manager::dec_connection_count();
+		// Clean up errors now, before possibly waiting for a new connection.
+		ERR_remove_state(0);
+	}
+	else
+	{
+		thd_manager->add_thd(thd);
+	}
+	delete channel_info;
+}
 
 /**
   Thread handler for a connection

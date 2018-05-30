@@ -21,6 +21,10 @@
 #include "my_thread_local.h"   // my_thread_id
 #include "prealloced_array.h"
 
+#include "blockingconcurrentqueue.h"
+
+extern ulong num_workers;
+
 class THD;
 
 #ifdef __cplusplus
@@ -131,6 +135,8 @@ public:
     @param thd THD object
   */
   void remove_thd(THD *thd);
+
+	void create_workers();
 
   /**
     Retrieves thread running statistic variable.
@@ -247,6 +253,8 @@ private:
   // Array of current THDs. Protected by LOCK_thd_list.
   typedef Prealloced_array<THD*, 500, true> THD_array;
   THD_array thd_list;
+
+	moodycamel::BlockingConcurrentQueue<THD *> thds;
 
   // Array of thread ID in current use. Protected by LOCK_thread_ids.
   typedef Prealloced_array<my_thread_id, 1000, true> Thread_id_array;
