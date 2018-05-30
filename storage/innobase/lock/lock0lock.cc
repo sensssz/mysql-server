@@ -89,6 +89,10 @@ static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
 static const ulint POPULARITY_THRESHOLD = 2000;
 
+static ulint popular_size = 0;
+static ulint largest_popular_size = 0;
+static ulint num_waits = 0;
+
 struct rec_id_t {
 	ulint space;
 	ulint page_no;
@@ -132,11 +136,22 @@ ulint lock_global_lock_mode(
 	ulint now = rdtsc();
 	rec_id_t rec_id(block->page.id.space(), block->page.id.page_no(), heap_no);
 	rec_stat_t &rec_stat = rec_stats[rec_id];
+	bool was_popular = rec_stat.is_popular;
 	bool is_popular = (now - rec_stat.last_access <= POPULARITY_THRESHOLD);
 	if (!rec_stat.is_popular) {
 		rec_stat.is_popular = is_popular;
 	} else if (!is_popular && rec_stat.num_holding == 0) {
 		rec_stat.is_popular = is_popular;
+	}
+	if (was_popular != rec_stat.is_popular) {
+		if (was_popular) {
+			--popular_size;
+		} else {
+			++popular_size;
+		}
+	}
+	if (popular_size > largest_popular_size) {
+		largest_popular_size = popular_size;
 	}
 	curr_is_popular = rec_stat.is_popular;
 	rec_stat.last_access = now;
@@ -190,6 +205,7 @@ lock_global_lock(
 	} else if (trx->global_lock_mode == LOCK_S) {
 		// Need to upgrade the lock to X lock
 		// To prevent deadlock, unlock it lock it
+		ut_a(lock_mode == LOCK_X);
 		pthread_rwlock_unlock(&global_lock);
 		pthread_rwlock_wrlock(&global_lock);
 		trx->global_lock_mode = lock_mode;
@@ -690,6 +706,9 @@ lock_sys_close(void)
 	ut_free(lock_sys);
 
 	lock_sys = NULL;
+
+	std::cerr << "Total number of waits: " << num_waits << std::endl;
+	std::cerr << "Largest number of popular records: " << largest_popular_size << std::endl;
 }
 
 /*********************************************************************//**
@@ -2142,6 +2161,10 @@ lock_rec_lock_slow(
 	}
 
 	trx_mutex_exit(trx);
+
+	if (err == DB_LOCK_WAIT) {
+		++num_waits;
+	}
 
 	return(err);
 }
