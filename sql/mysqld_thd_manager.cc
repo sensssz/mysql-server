@@ -16,7 +16,7 @@
 #include "mysqld_thd_manager.h"
 
 #include "mysql/thread_pool_priv.h"  // inc_thread_created
-#include "mysqld_error.h"            // ER_*
+
 #include "mutex_lock.h"              // Mutex_lock
 #include "debug_sync.h"              // DEBUG_SYNC_C
 #include "sql_class.h"               // THD
@@ -216,9 +216,6 @@ static void *process_client_requests(void *)
 
 				thd->get_stmt_da()->reset_diagnostics_area();
 				thd->release_resources();
-
-				// Clean up errors now, before possibly waiting for a new connection.
-				ERR_remove_state(0);
 
 				manager->remove_thd(thd);
 				Connection_handler_manager::dec_connection_count();

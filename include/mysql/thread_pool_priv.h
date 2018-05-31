@@ -141,7 +141,7 @@ bool schema_table_store_record(THD *thd, TABLE *table);
   state in THD object. This is the main objective of the thread pool to
   schedule the start of these commands.
 */
-bool do_command(THD *thd);
+int do_command(THD *thd);
 
 /*
   The thread pool requires an interface to the connection logic in the
