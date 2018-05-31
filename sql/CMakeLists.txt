@@ -270,6 +270,7 @@ SET(SQL_SOURCE
   ../sql-common/sql_string.cc 
   command_service.cc
   conn_handler/channel_info.cc
+  conn_handler/connection_handler_background_workers.cc
   conn_handler/connection_handler_per_thread.cc
   conn_handler/connection_handler_one_thread.cc
   conn_handler/socket_connection.cc

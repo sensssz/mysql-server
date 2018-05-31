@@ -146,6 +146,9 @@ bool Connection_handler_manager::init()
   Connection_handler *connection_handler= NULL;
   switch (Connection_handler_manager::thread_handling)
   {
+	case SCHEDULER_BACKGROUND_WORKERS:
+		connection_handler= new (std::nothrow) Background_worker_connection_handler();
+		break;
   case SCHEDULER_ONE_THREAD_PER_CONNECTION:
     connection_handler= new (std::nothrow) Per_thread_connection_handler();
     break;

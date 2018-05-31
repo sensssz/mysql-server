@@ -147,8 +147,6 @@ public:
 		thds.enqueue(thd);
 	}
 
-	void create_workers();
-
   /**
     Retrieves thread running statistic variable.
     @return int Returns the total number of threads currently running
