@@ -2329,6 +2329,8 @@ static Sys_var_ulong Sys_max_connections(
        /* max_connections is used as a sizing hint by the performance schema. */
        sys_var::PARSE_EARLY);
 
+#ifndef EMBEDDED_LIBRARY
+
 static Sys_var_ulong Sys_num_workers(
        "num_workers", "The number of worker threads",
        GLOBAL_VAR(num_workers), CMD_LINE(REQUIRED_ARG),
@@ -2339,6 +2341,8 @@ static Sys_var_ulong Sys_num_workers(
        NOT_IN_BINLOG,
        ON_CHECK(0),
        ON_UPDATE(0));
+
+#endif
 
 static Sys_var_ulong Sys_max_connect_errors(
        "max_connect_errors",
