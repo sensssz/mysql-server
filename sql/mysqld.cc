@@ -7976,6 +7976,11 @@ static int get_options(int *argc_ptr, char ***argv_ptr)
                                   &global_datetime_format))
     return 1;
 
+	if (Global_THD_manager::create_instance())
+	{
+		sql_print_error("Could not allocate memory for thread handling");
+		return 1;
+	}
 #ifndef EMBEDDED_LIBRARY
   if (Connection_handler_manager::init())
   {
@@ -7983,11 +7988,6 @@ static int get_options(int *argc_ptr, char ***argv_ptr)
     return 1;
   }
 #endif
-  if (Global_THD_manager::create_instance())
-  {
-    sql_print_error("Could not allocate memory for thread handling");
-    return 1;
-  }
 
   /* If --super-read-only was specified, set read_only to 1 */
   read_only= super_read_only ? super_read_only : read_only;
