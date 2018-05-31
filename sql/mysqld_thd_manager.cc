@@ -154,7 +154,7 @@ void Global_THD_manager::destroy_instance()
 }
 
 
-void Global_THD_manager::add_thd(THD *thd)
+bool Global_THD_manager::add_thd(THD *thd)
 {
   DBUG_PRINT("info", ("Global_THD_manager::add_thd %p", thd));
   // Should have an assigned ID before adding to the list.
@@ -171,9 +171,7 @@ void Global_THD_manager::add_thd(THD *thd)
   DBUG_ASSERT(insert_result.second);
   mysql_mutex_unlock(&LOCK_thd_list);
 
-	if (insert_result.second) {
-		thds.enqueue(thd);
-	}
+	return insert_result.second;
 }
 
 void Global_THD_manager::remove_thd(THD *thd)

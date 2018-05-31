@@ -127,7 +127,7 @@ public:
 
     @param thd THD object
   */
-  void add_thd(THD *thd);
+  bool add_thd(THD *thd);
 
   /**
     Removes THD from global THD list.

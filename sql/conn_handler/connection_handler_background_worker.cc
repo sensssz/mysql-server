@@ -193,7 +193,9 @@ static void create_thd(Channel_info *channel_info)
 	}
 	else
 	{
-		thd_manager->add_thd(thd);
+		if (thd_manager->add_thd(thd)) {
+			thd_manager->put_back(thd);
+		}
 	}
 	delete channel_info;
 }
