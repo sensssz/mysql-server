@@ -198,12 +198,12 @@ static void create_thd(Channel_info *channel_info)
 	delete channel_info;
 }
 
-bool Background_workers_connection_handler::add_connection(Channel_info* channel_info)
+bool Background_worker_connection_handler::add_connection(Channel_info* channel_info)
 {
   int error= 0;
   my_thread_handle id;
 
-  DBUG_ENTER("Background_workers_connection_handler::add_connection");
+  DBUG_ENTER("Background_worker_connection_handler::add_connection");
 
 	create_thd(channel_info);
 
