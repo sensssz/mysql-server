@@ -136,6 +136,15 @@ public:
   */
   void remove_thd(THD *thd);
 
+	THD *get_thd()
+	{
+		return thds.wait_dequeue();
+	}
+
+	void put_back(THD *thd) {
+		thds.enqueue(thd);
+	}
+
 	void create_workers();
 
   /**

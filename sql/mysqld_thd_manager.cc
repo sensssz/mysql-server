@@ -177,6 +177,66 @@ void Global_THD_manager::add_thd(THD *thd)
 	}
 }
 
+static void *process_client_requests(void *)
+{
+	my_thread_init();
+	Global_THD_manager *manager = Global_THD_manager::get_instance();
+	while (!abort_loop)
+	{
+		THD *thd = manager->get_thd();
+#ifdef HAVE_PSI_THREAD_INTERFACE
+		/*
+		 Reusing existing pthread:
+		 Create new instrumentation for the new THD job,
+		 and attach it to this running pthread.
+		 */
+		PSI_thread *psi= PSI_THREAD_CALL(new_thread)
+		(key_thread_one_connection, thd, thd->thread_id());
+		PSI_THREAD_CALL(set_thread_os_id)(psi);
+		PSI_THREAD_CALL(set_thread)(psi);
+		/* Save it within THD, so it can be inspected */
+		thd->set_psi(psi);
+#endif /* HAVE_PSI_THREAD_INTERFACE */
+		mysql_thread_set_psi_id(thd->thread_id());
+		mysql_thread_set_psi_THD(thd);
+		mysql_socket_set_thread_owner(thd->get_protocol_classic()->get_vio()->mysql_socket);
+		while (thd_connection_alive(thd))
+		{
+			int do_res = do_command(thd);
+			if (do_res == 1)
+			{
+				// End of transaction, put it back
+				manager->put_back(thd);
+			}
+			else if (do_res == 2)
+			{
+				end_connection(thd);
+				close_connection(thd, 0, false, false);
+
+				thd->get_stmt_da()->reset_diagnostics_area();
+				thd->release_resources();
+
+				// Clean up errors now, before possibly waiting for a new connection.
+				ERR_remove_state(0);
+
+				manager->remove_thd(thd);
+				Connection_handler_manager::dec_connection_count();
+
+#ifdef HAVE_PSI_THREAD_INTERFACE
+				/*
+				 Delete the instrumentation for the job that just completed.
+				 */
+				thd->set_psi(NULL);
+				PSI_THREAD_CALL(delete_current_thread)();
+#endif /* HAVE_PSI_THREAD_INTERFACE */
+
+				delete thd;
+			}
+		}
+	}
+	my_thread_end();
+	my_thread_exit(0);
+}
 
 void Global_THD_manager::remove_thd(THD *thd)
 {
@@ -206,7 +266,12 @@ void Global_THD_manager::remove_thd(THD *thd)
 
 void Global_THD_manager::create_workers()
 {
-	
+	for (ulong i = 0; i < num_workers; i++)
+	{
+		my_thread_handle id;
+		mysql_thread_create(key_thread_one_connection, &id, NULL,
+												process_client_requests, NULL);
+	}
 }
 
 my_thread_id Global_THD_manager::get_new_thread_id()

@@ -112,6 +112,8 @@
 #include <algorithm>
 using std::max;
 
+thread_local bool is_commit = false;
+
 /**
   @defgroup Runtime_Environment Runtime Environment
   @{
@@ -866,9 +868,9 @@ void cleanup_items(Item *item)
     1  request of thread shutdown (see dispatch_command() description)
 */
 
-bool do_command(THD *thd)
+int do_command(THD *thd)
 {
-  bool return_value;
+  int return_value;
   int rc;
   const bool classic=
     (thd->get_protocol()->type() == Protocol::PROTOCOL_TEXT ||
@@ -970,12 +972,12 @@ bool do_command(THD *thd)
 
     if (rc < 0)
     {
-      return_value= TRUE;                       // We have to close it.
+      return_value= 2;                       // We have to close it.
       goto out;
     }
     if (classic)
       net->error= 0;
-    return_value= FALSE;
+    return_value= 0;
     goto out;
   }
 
@@ -1180,13 +1182,15 @@ void reset_statement_timer(THD *thd)
   @retval
     0   ok
   @retval
-    1   request of thread shutdown, i. e. if command is
+ 		1		end of transaction, i. e. if command is COMMIT/ROLLBACK
+    2   request of thread shutdown, i. e. if command is
         COM_QUIT/COM_SHUTDOWN
 */
-bool dispatch_command(THD *thd, const COM_DATA *com_data,
+int dispatch_command(THD *thd, const COM_DATA *com_data,
                       enum enum_server_command command)
 {
-  bool error= 0;
+  int error= 0;
+	is_commit = false;
   Global_THD_manager *thd_manager= Global_THD_manager::get_instance();
   DBUG_ENTER("dispatch_command");
   DBUG_PRINT("info", ("command: %d", command));
@@ -1274,7 +1278,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
   {
     my_error(ER_PLUGGABLE_PROTOCOL_COMMAND_NOT_SUPPORTED, MYF(0));
     thd->killed= THD::KILL_CONNECTION;
-    error= true;
+    error= 2;
     goto done;
   }
 
@@ -1371,7 +1375,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
                thd->security_context()->host_or_ip().str,
                (thd->password ? ER(ER_YES) : ER(ER_NO)));
       thd->killed= THD::KILL_CONNECTION;
-      error=true;
+      error=2;
     }
     else
     {
@@ -1542,7 +1546,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
 
     /* Need to set error to true for graceful shutdown */
     if((thd->lex->sql_command == SQLCOM_SHUTDOWN) && (thd->get_stmt_da()->is_ok()))
-      error= TRUE;
+      error= 2;
 
     DBUG_PRINT("info",("query ready"));
     break;
@@ -1662,7 +1666,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
     if (thd->is_classic_protocol())
       thd->get_protocol_classic()->get_net()->error= 0;
     thd->get_stmt_da()->disable_status();       // Don't send anything back
-    error=TRUE;					// End server
+    error=2;					// End server
     break;
 #ifndef EMBEDDED_LIBRARY
   case COM_BINLOG_DUMP_GTID:
@@ -1746,7 +1750,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
       level= com_data->com_shutdown.level;
     if(!shutdown(thd, level, command))
       break;
-    error= TRUE;
+    error= 2;
     break;
   }
 #endif
@@ -1919,6 +1923,10 @@ done:
   {
     MYSQL_COMMAND_DONE(thd->is_error());
   }
+
+	if (is_commit) {
+		error = 1;
+	}
 
   /* SHOW PROFILE instrumentation, end */
 #if defined(ENABLED_PROFILING)

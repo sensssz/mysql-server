@@ -252,6 +252,16 @@ static void create_thd(Channel_info *channel_info)
 		Connection_handler_manager::dec_connection_count();
 		// Clean up errors now, before possibly waiting for a new connection.
 		ERR_remove_state(0);
+
+#ifdef HAVE_PSI_THREAD_INTERFACE
+		/*
+		 Delete the instrumentation for the job that just completed.
+		 */
+		thd->set_psi(NULL);
+		PSI_THREAD_CALL(delete_current_thread)();
+#endif /* HAVE_PSI_THREAD_INTERFACE */
+
+		delete thd;
 	}
 	else
 	{
@@ -430,38 +440,40 @@ bool Per_thread_connection_handler::add_connection(Channel_info* channel_info)
 
   DBUG_ENTER("Per_thread_connection_handler::add_connection");
 
-  // Simulate thread creation for test case before we check thread cache
-  DBUG_EXECUTE_IF("fail_thread_create", error= 1; goto handle_error;);
+	create_thd(channel_info);
 
-  if (!check_idle_thread_and_enqueue_connection(channel_info))
-    DBUG_RETURN(false);
-
-  /*
-    There are no idle threads avaliable to take up the new
-    connection. Create a new thread to handle the connection
-  */
-  channel_info->set_prior_thr_create_utime();
-  error= mysql_thread_create(key_thread_one_connection, &id,
-                             &connection_attrib,
-                             handle_connection,
-                             (void*) channel_info);
-#ifndef DBUG_OFF
-handle_error:
-#endif // !DBUG_OFF
-
-  if (error)
-  {
-    connection_errors_internal++;
-    if (!create_thd_err_log_throttle.log())
-      sql_print_error("Can't create thread to handle new connection(errno= %d)",
-                      error);
-    channel_info->send_error_and_close_channel(ER_CANT_CREATE_THREAD,
-                                               error, true);
-    Connection_handler_manager::dec_connection_count();
-    DBUG_RETURN(true);
-  }
-
-  Global_THD_manager::get_instance()->inc_thread_created();
+//  // Simulate thread creation for test case before we check thread cache
+//  DBUG_EXECUTE_IF("fail_thread_create", error= 1; goto handle_error;);
+//
+//  if (!check_idle_thread_and_enqueue_connection(channel_info))
+//    DBUG_RETURN(false);
+//
+//  /*
+//    There are no idle threads avaliable to take up the new
+//    connection. Create a new thread to handle the connection
+//  */
+//  channel_info->set_prior_thr_create_utime();
+//  error= mysql_thread_create(key_thread_one_connection, &id,
+//                             &connection_attrib,
+//                             handle_connection,
+//                             (void*) channel_info);
+//#ifndef DBUG_OFF
+//handle_error:
+//#endif // !DBUG_OFF
+//
+//  if (error)
+//  {
+//    connection_errors_internal++;
+//    if (!create_thd_err_log_throttle.log())
+//      sql_print_error("Can't create thread to handle new connection(errno= %d)",
+//                      error);
+//    channel_info->send_error_and_close_channel(ER_CANT_CREATE_THREAD,
+//                                               error, true);
+//    Connection_handler_manager::dec_connection_count();
+//    DBUG_RETURN(true);
+//  }
+//
+//  Global_THD_manager::get_instance()->inc_thread_created();
   DBUG_PRINT("info",("Thread created"));
   DBUG_RETURN(false);
 }

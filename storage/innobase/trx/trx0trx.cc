@@ -58,6 +58,8 @@ Created 3/26/1996 Heikki Tuuri
 
 static const ulint MAX_DETAILED_ERROR_LEN = 256;
 
+extern thread_local bool is_commit;
+
 /** Set of table_id */
 typedef std::set<
 	table_id_t,
@@ -2098,6 +2100,7 @@ trx_commit_low(
 	mtr_t*	mtr)	/*!< in/out: mini-transaction (will be committed),
 			or NULL if trx made no modifications */
 {
+	is_commit = true;
 	assert_trx_nonlocking_or_in_list(trx);
 	ut_ad(!trx_state_eq(trx, TRX_STATE_COMMITTED_IN_MEMORY));
 	ut_ad(!mtr || mtr->is_active());

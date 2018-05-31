@@ -65,6 +65,8 @@ static undo_no_t	trx_roll_max_undo_no;
 /** Auxiliary variable which tells the previous progress % we printed */
 static ulint		trx_roll_progress_printed_pct;
 
+extern thread_local bool is_commit;
+
 /****************************************************************//**
 Finishes a transaction rollback. */
 static
@@ -199,6 +201,7 @@ trx_rollback_low(
 	active MySQL transaction (or recovered prepared transaction)
 	that is associated with the current thread. */
 
+	is_commit = true;
 	switch (trx->state) {
 	case TRX_STATE_FORCED_ROLLBACK:
 	case TRX_STATE_NOT_STARTED:
