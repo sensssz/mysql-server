@@ -34,9 +34,12 @@ ulong num_workers;
 static void *process_client_requests(void *)
 {
 	my_thread_init();
-	Global_THD_manager *manager = Global_THD_manager::get_instance();
 	while (!abort_loop)
 	{
+		Global_THD_manager *manager = Global_THD_manager::get_instance();
+		if (manager == NULL) {
+			sleep(1);
+		}
 		THD *thd = manager->get_thd();
 #ifdef HAVE_PSI_THREAD_INTERFACE
 		/*
