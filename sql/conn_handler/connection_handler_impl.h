@@ -29,15 +29,15 @@ class THD;
 
 extern ulong num_workers;
 
-class Background_worker_connection_handler : public Connection_handler
+class Background_workers_connection_handler : public Connection_handler
 {
-	Background_worker_connection_handler(const Background_worker_connection_handler&);
-	Background_worker_connection_handler&
-		operator=(const Background_worker_connection_handler&);
+	Background_workers_connection_handler(const Background_workers_connection_handler&);
+	Background_workers_connection_handler&
+		operator=(const Background_workers_connection_handler&);
 
 public:
-	Background_worker_connection_handler();
-	virtual ~Background_worker_connection_handler() {}
+	Background_workers_connection_handler();
+	virtual ~Background_workers_connection_handler() {}
 
 protected:
 	virtual bool add_connection(Channel_info* channel_info);
