@@ -38,6 +38,7 @@ static void *process_client_requests(void *)
 	while (!abort_loop)
 	{
 		THD *thd = manager->get_thd();
+		thd->store_globals();
 #ifdef HAVE_PSI_THREAD_INTERFACE
 		/*
 		 Reusing existing pthread:
@@ -61,6 +62,7 @@ static void *process_client_requests(void *)
 			{
 				// End of transaction, put it back
 				manager->put_back(thd);
+				break;
 			}
 			else if (do_res == 2)
 			{
@@ -82,6 +84,7 @@ static void *process_client_requests(void *)
 #endif /* HAVE_PSI_THREAD_INTERFACE */
 
 				delete thd;
+				break;
 			}
 		}
 	}

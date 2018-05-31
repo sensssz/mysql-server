@@ -863,9 +863,10 @@ void cleanup_items(Item *item)
   For profiling to work, it must never be called recursively.
 
   @retval
-    0  success
+ 		0  success
   @retval
-    1  request of thread shutdown (see dispatch_command() description)
+ 		1		end of transaction
+ 		2   request of thread shutdown
 */
 
 int do_command(THD *thd)
