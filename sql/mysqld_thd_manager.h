@@ -138,7 +138,9 @@ public:
 
 	THD *get_thd()
 	{
-		return thds.wait_dequeue();
+		THD *thd;
+		thds.wait_dequeue(thd);
+		return thd;
 	}
 
 	void put_back(THD *thd) {
