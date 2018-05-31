@@ -16,6 +16,7 @@
 #include "mysqld_thd_manager.h"
 
 #include "mysql/thread_pool_priv.h"  // inc_thread_created
+#include "mysqld_error.h"            // ER_*
 #include "mutex_lock.h"              // Mutex_lock
 #include "debug_sync.h"              // DEBUG_SYNC_C
 #include "sql_class.h"               // THD
@@ -236,6 +237,7 @@ static void *process_client_requests(void *)
 	}
 	my_thread_end();
 	my_thread_exit(0);
+	return NULL;
 }
 
 void Global_THD_manager::remove_thd(THD *thd)
