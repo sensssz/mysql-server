@@ -197,7 +197,6 @@ static void create_thd(Channel_info *channel_info)
 			thd_manager->put_back(thd);
 		}
 	}
-	delete channel_info;
 }
 
 bool Background_worker_connection_handler::add_connection(Channel_info* channel_info)

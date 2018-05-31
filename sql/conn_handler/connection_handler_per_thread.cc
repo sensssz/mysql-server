@@ -218,58 +218,6 @@ static THD* init_new_thd(Channel_info *channel_info)
   return thd;
 }
 
-static void create_thd(Channel_info *channel_info)
-{
-	Global_THD_manager *thd_manager= Global_THD_manager::get_instance();
-	Connection_handler_manager *handler_manager= Connection_handler_manager::get_instance();
-
-	if (my_thread_init())
-	{
-		connection_errors_internal++;
-		channel_info->send_error_and_close_channel(ER_OUT_OF_RESOURCES, 0, false);
-		handler_manager->inc_aborted_connects();
-		Connection_handler_manager::dec_connection_count();
-		delete channel_info;
-		return;
-	}
-
-	THD *thd= init_new_thd(channel_info);
-	if (thd == NULL)
-	{
-		connection_errors_internal++;
-		handler_manager->inc_aborted_connects();
-		Connection_handler_manager::dec_connection_count();
-		delete channel_info;
-		return;
-	}
-
-	if (thd_prepare_connection(thd))
-	{
-		handler_manager->inc_aborted_connects();
-		close_connection(thd, 0, false, false);
-		thd->get_stmt_da()->reset_diagnostics_area();
-		thd->release_resources();
-		Connection_handler_manager::dec_connection_count();
-		// Clean up errors now, before possibly waiting for a new connection.
-		ERR_remove_state(0);
-
-#ifdef HAVE_PSI_THREAD_INTERFACE
-		/*
-		 Delete the instrumentation for the job that just completed.
-		 */
-		thd->set_psi(NULL);
-		PSI_THREAD_CALL(delete_current_thread)();
-#endif /* HAVE_PSI_THREAD_INTERFACE */
-
-		delete thd;
-	}
-	else
-	{
-		thd_manager->add_thd(thd);
-	}
-	delete channel_info;
-}
-
 /**
   Thread handler for a connection
 
@@ -440,40 +388,38 @@ bool Per_thread_connection_handler::add_connection(Channel_info* channel_info)
 
   DBUG_ENTER("Per_thread_connection_handler::add_connection");
 
-	create_thd(channel_info);
+  // Simulate thread creation for test case before we check thread cache
+  DBUG_EXECUTE_IF("fail_thread_create", error= 1; goto handle_error;);
 
-//  // Simulate thread creation for test case before we check thread cache
-//  DBUG_EXECUTE_IF("fail_thread_create", error= 1; goto handle_error;);
-//
-//  if (!check_idle_thread_and_enqueue_connection(channel_info))
-//    DBUG_RETURN(false);
-//
-//  /*
-//    There are no idle threads avaliable to take up the new
-//    connection. Create a new thread to handle the connection
-//  */
-//  channel_info->set_prior_thr_create_utime();
-//  error= mysql_thread_create(key_thread_one_connection, &id,
-//                             &connection_attrib,
-//                             handle_connection,
-//                             (void*) channel_info);
-//#ifndef DBUG_OFF
-//handle_error:
-//#endif // !DBUG_OFF
-//
-//  if (error)
-//  {
-//    connection_errors_internal++;
-//    if (!create_thd_err_log_throttle.log())
-//      sql_print_error("Can't create thread to handle new connection(errno= %d)",
-//                      error);
-//    channel_info->send_error_and_close_channel(ER_CANT_CREATE_THREAD,
-//                                               error, true);
-//    Connection_handler_manager::dec_connection_count();
-//    DBUG_RETURN(true);
-//  }
-//
-//  Global_THD_manager::get_instance()->inc_thread_created();
+  if (!check_idle_thread_and_enqueue_connection(channel_info))
+    DBUG_RETURN(false);
+
+  /*
+    There are no idle threads avaliable to take up the new
+    connection. Create a new thread to handle the connection
+  */
+  channel_info->set_prior_thr_create_utime();
+  error= mysql_thread_create(key_thread_one_connection, &id,
+                             &connection_attrib,
+                             handle_connection,
+                             (void*) channel_info);
+#ifndef DBUG_OFF
+handle_error:
+#endif // !DBUG_OFF
+
+  if (error)
+  {
+    connection_errors_internal++;
+    if (!create_thd_err_log_throttle.log())
+      sql_print_error("Can't create thread to handle new connection(errno= %d)",
+                      error);
+    channel_info->send_error_and_close_channel(ER_CANT_CREATE_THREAD,
+                                               error, true);
+    Connection_handler_manager::dec_connection_count();
+    DBUG_RETURN(true);
+  }
+
+  Global_THD_manager::get_instance()->inc_thread_created();
   DBUG_PRINT("info",("Thread created"));
   DBUG_RETURN(false);
 }
