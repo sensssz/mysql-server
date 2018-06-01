@@ -143,7 +143,8 @@ public:
 		return thd;
 	}
 
-	void put_back(THD *thd) {
+	void put_back(THD *thd)
+	{
 		thds.enqueue(thd);
 	}
 

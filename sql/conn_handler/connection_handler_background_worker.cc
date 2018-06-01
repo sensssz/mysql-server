@@ -61,7 +61,7 @@ static void *process_client_requests(void *)
 		while (thd_connection_alive(thd))
 		{
 			int do_res = do_command(thd);
-			if (do_res == 1)
+			if (do_res == 1 || is_timeout)
 			{
 				// End of transaction, put it back
 				manager->put_back(thd);
@@ -69,27 +69,24 @@ static void *process_client_requests(void *)
 			}
 			else if (do_res == 2)
 			{
-				if (!is_timeout)
-				{
-					end_connection(thd);
-					close_connection(thd, 0, false, false);
+				end_connection(thd);
+				close_connection(thd, 0, false, false);
 
-					thd->get_stmt_da()->reset_diagnostics_area();
-					thd->release_resources();
+				thd->get_stmt_da()->reset_diagnostics_area();
+				thd->release_resources();
 
-					manager->remove_thd(thd);
-					Connection_handler_manager::dec_connection_count();
+				manager->remove_thd(thd);
+				Connection_handler_manager::dec_connection_count();
 
 #ifdef HAVE_PSI_THREAD_INTERFACE
-					/*
-					 Delete the instrumentation for the job that just completed.
-					 */
-					thd->set_psi(NULL);
-					PSI_THREAD_CALL(delete_current_thread)();
+				/*
+				 Delete the instrumentation for the job that just completed.
+				 */
+				thd->set_psi(NULL);
+				PSI_THREAD_CALL(delete_current_thread)();
 #endif /* HAVE_PSI_THREAD_INTERFACE */
 
-					delete thd;
-				}
+				delete thd;
 				break;
 			}
 		}
