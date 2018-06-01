@@ -136,6 +136,11 @@ public:
   */
   void remove_thd(THD *thd);
 
+	bool try_get_thd(THD *&thd)
+	{
+		return thds.try_dequeue(thd);
+	}
+
 	THD *get_thd()
 	{
 		THD *thd;

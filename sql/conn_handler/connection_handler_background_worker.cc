@@ -37,10 +37,10 @@ static void *process_client_requests(void *)
 	Global_THD_manager *manager = Global_THD_manager::get_instance();
 	while (!abort_loop)
 	{
-		THD *thd = manager->get_thd();
-		if (thd == NULL)
-		{
-			break;
+		THD *thd = NULL;
+		if (!manager->try_get_thd(thd)) {
+			std::this_thread::sleep_for(std::chrono::microseconds(10));
+			continue;
 		}
 		thd->store_globals();
 		thd_set_thread_stack(thd, (char*) &thd);

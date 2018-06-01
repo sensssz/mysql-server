@@ -148,9 +148,11 @@ bool Connection_handler_manager::init()
   switch (Connection_handler_manager::thread_handling)
   {
 	case SCHEDULER_BACKGROUND_WORKER:
+		std::cerr << "Using background worker handler" << std::endl;
 		connection_handler= new (std::nothrow) Background_worker_connection_handler();
 		break;
   case SCHEDULER_ONE_THREAD_PER_CONNECTION:
+		std::cerr << "Using per-thread handler" << std::endl;
     connection_handler= new (std::nothrow) Per_thread_connection_handler();
     break;
   case SCHEDULER_NO_THREADS:
@@ -212,15 +214,6 @@ void Connection_handler_manager::wait_till_no_connection()
 void Connection_handler_manager::destroy_instance()
 {
   Per_thread_connection_handler::destroy();
-
-	if (thread_handling == SCHEDULER_BACKGROUND_WORKER) {
-		Global_THD_manager *manager = Global_THD_manager::get_instance();
-		for (ulong i = 0; i < num_workers; i++) {
-			manager->put_thd(NULL);
-		}
-		while (manager->thd_size() != 0) {
-		}
-	}
 
   if (m_instance != NULL)
   {
