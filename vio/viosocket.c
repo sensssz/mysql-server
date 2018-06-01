@@ -38,6 +38,8 @@
 # include <sys/ioctl.h>
 #endif
 
+__thread int is_timeout = 0;
+
 int vio_errno(Vio *vio MY_ATTRIBUTE((unused)))
 {
   /* These transport types are not Winsock based. */
@@ -73,6 +75,7 @@ int vio_socket_io_wait(Vio *vio, enum enum_vio_io_event event)
   else
     timeout= vio->write_timeout;
 
+	is_timeout = 0;
   /* Wait for input data to become available. */
   switch (vio_io_wait(vio, event, timeout))
   {
@@ -83,6 +86,7 @@ int vio_socket_io_wait(Vio *vio, enum enum_vio_io_event event)
   case  0:
     /* The wait timed out. */
     ret= -1;
+		is_timeout = 1;
     break;
   default:
     /* A positive value indicates an I/O event. */

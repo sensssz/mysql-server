@@ -30,6 +30,7 @@
 #include "log.h"                         // Error_log_throttle
 
 ulong num_workers;
+extern __thread int is_timeout;
 
 static void *process_client_requests(void *)
 {
@@ -40,6 +41,7 @@ static void *process_client_requests(void *)
 		THD *thd = manager->get_thd();
 		thd->store_globals();
 		thd_set_thread_stack(thd, (char*) &thd);
+		thd->variables.net_wait_timeout = 5;
 #ifdef HAVE_PSI_THREAD_INTERFACE
 		/*
 		 Reusing existing pthread:
@@ -67,24 +69,27 @@ static void *process_client_requests(void *)
 			}
 			else if (do_res == 2)
 			{
-				end_connection(thd);
-				close_connection(thd, 0, false, false);
+				if (!is_timeout)
+				{
+					end_connection(thd);
+					close_connection(thd, 0, false, false);
 
-				thd->get_stmt_da()->reset_diagnostics_area();
-				thd->release_resources();
+					thd->get_stmt_da()->reset_diagnostics_area();
+					thd->release_resources();
 
-				manager->remove_thd(thd);
-				Connection_handler_manager::dec_connection_count();
+					manager->remove_thd(thd);
+					Connection_handler_manager::dec_connection_count();
 
 #ifdef HAVE_PSI_THREAD_INTERFACE
-				/*
-				 Delete the instrumentation for the job that just completed.
-				 */
-				thd->set_psi(NULL);
-				PSI_THREAD_CALL(delete_current_thread)();
+					/*
+					 Delete the instrumentation for the job that just completed.
+					 */
+					thd->set_psi(NULL);
+					PSI_THREAD_CALL(delete_current_thread)();
 #endif /* HAVE_PSI_THREAD_INTERFACE */
 
-				delete thd;
+					delete thd;
+				}
 				break;
 			}
 		}
@@ -201,7 +206,8 @@ static void create_thd(Channel_info *channel_info)
 	}
 	else
 	{
-		if (thd_manager->add_thd(thd)) {
+		if (thd_manager->add_thd(thd))
+		{
 			thd_manager->put_back(thd);
 		}
 	}
