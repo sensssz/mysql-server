@@ -112,6 +112,7 @@
 #include <algorithm>
 using std::max;
 
+thread_local bool has_commit = false;
 thread_local bool is_commit = false;
 
 /**
@@ -1925,9 +1926,10 @@ done:
     MYSQL_COMMAND_DONE(thd->is_error());
   }
 
-	if (is_commit) {
+	if (!has_commit || is_commit) {
 		error = 1;
 	}
+	has_commit = has_commit || is_commit;
 
   /* SHOW PROFILE instrumentation, end */
 #if defined(ENABLED_PROFILING)

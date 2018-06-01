@@ -96,12 +96,16 @@ static void *process_client_requests(void *)
 
 Background_worker_connection_handler::Background_worker_connection_handler()
 {
+	my_thread_attr_t attr;
+	my_thread_attr_init(&attr);
+	(void) my_thread_attr_setdetachstate(&attr, MY_THREAD_CREATE_DETACHED);
 	for (ulong i = 0; i < num_workers; i++)
 	{
 		my_thread_handle id;
 		mysql_thread_create(key_thread_one_connection, &id, NULL,
 												process_client_requests, NULL);
 	}
+	my_thread_attr_destroy(&attr);
 }
 
 /**
