@@ -296,7 +296,7 @@ extern "C" void *handle_connection(void *arg)
     {
       while (thd_connection_alive(thd))
       {
-        if (do_command(thd))
+        if (do_command(thd) == 2)
           break;
       }
       end_connection(thd);
