@@ -39,6 +39,7 @@ static void *process_client_requests(void *)
 	{
 		THD *thd = manager->get_thd();
 		thd->store_globals();
+		thd_set_thread_stack(thd, (char*) &thd);
 #ifdef HAVE_PSI_THREAD_INTERFACE
 		/*
 		 Reusing existing pthread:
