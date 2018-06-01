@@ -38,7 +38,12 @@ static void *process_client_requests(void *)
 	while (!abort_loop)
 	{
 		THD *thd = manager->get_thd();
+		if (thd == NULL)
+		{
+			break;
+		}
 		thd->store_globals();
+		thd_set_thread_stack(thd, (char*) &thd);
 #ifdef HAVE_PSI_THREAD_INTERFACE
 		/*
 		 Reusing existing pthread:
@@ -137,7 +142,7 @@ static THD* init_new_thd(Channel_info *channel_info)
     need to know the start of the stack so that we could check for
     stack overruns.
   */
-  thd_set_thread_stack(thd, (char*) &thd);
+  thd_set_thread_stack(thd, (char*) &thd); 
   if (thd->store_globals())
   {
     close_connection(thd, ER_OUT_OF_RESOURCES);
