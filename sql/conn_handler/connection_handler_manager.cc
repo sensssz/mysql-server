@@ -215,6 +215,15 @@ void Connection_handler_manager::destroy_instance()
 {
   Per_thread_connection_handler::destroy();
 
+//	if (thread_handling == SCHEDULER_BACKGROUND_WORKER) {
+//		Global_THD_manager *manager = Global_THD_manager::get_instance();
+//		for (ulong i = 0; i < num_workers; i++) {
+//			manager->put_thd(NULL);
+//		}
+//		while (manager->thd_size() != 0) {
+//		}
+//	}
+
   if (m_instance != NULL)
   {
     delete m_instance;
