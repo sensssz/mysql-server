@@ -20,7 +20,6 @@
 #include "mutex_lock.h"              // Mutex_lock
 #include "debug_sync.h"              // DEBUG_SYNC_C
 #include "sql_class.h"               // THD
-#include "conn_handler/connection_handler_manager.h"
 
 #include <functional>
 #include <algorithm>

@@ -136,11 +136,6 @@ public:
   */
   void remove_thd(THD *thd);
 
-	bool try_get_thd(THD *&thd)
-	{
-		return thds.try_dequeue(thd);
-	}
-
 	THD *get_thd()
 	{
 		THD *thd;
@@ -148,12 +143,9 @@ public:
 		return thd;
 	}
 
-	void put_thd(THD *thd)
-	{
+	void put_back(THD *thd) {
 		thds.enqueue(thd);
 	}
-
-	size_t thd_size() { return thds.size_approx(); }
 
   /**
     Retrieves thread running statistic variable.

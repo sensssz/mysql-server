@@ -37,13 +37,8 @@ static void *process_client_requests(void *)
 	Global_THD_manager *manager = Global_THD_manager::get_instance();
 	while (!abort_loop)
 	{
-		THD *thd = NULL;
-		if (!manager->try_get_thd(thd)) {
-			std::this_thread::sleep_for(std::chrono::microseconds(10));
-			continue;
-		}
+		THD *thd = manager->get_thd();
 		thd->store_globals();
-		thd_set_thread_stack(thd, (char*) &thd);
 #ifdef HAVE_PSI_THREAD_INTERFACE
 		/*
 		 Reusing existing pthread:
@@ -66,7 +61,7 @@ static void *process_client_requests(void *)
 			if (do_res == 1)
 			{
 				// End of transaction, put it back
-				manager->put_thd(thd);
+				manager->put_back(thd);
 				break;
 			}
 			else if (do_res == 2)
@@ -101,16 +96,12 @@ static void *process_client_requests(void *)
 
 Background_worker_connection_handler::Background_worker_connection_handler()
 {
-	my_thread_attr_t attr;
-	my_thread_attr_init(&attr);
 	for (ulong i = 0; i < num_workers; i++)
 	{
 		my_thread_handle id;
-		(void) my_thread_attr_setdetachstate(&attr, MY_THREAD_CREATE_DETACHED);
-		mysql_thread_create(key_thread_one_connection, &id, &attr,
+		mysql_thread_create(key_thread_one_connection, &id, NULL,
 												process_client_requests, NULL);
 	}
-	my_thread_attr_destroy(&attr);
 }
 
 /**
@@ -146,7 +137,7 @@ static THD* init_new_thd(Channel_info *channel_info)
     need to know the start of the stack so that we could check for
     stack overruns.
   */
-  thd_set_thread_stack(thd, (char*) &thd); 
+  thd_set_thread_stack(thd, (char*) &thd);
   if (thd->store_globals())
   {
     close_connection(thd, ER_OUT_OF_RESOURCES);
@@ -206,7 +197,7 @@ static void create_thd(Channel_info *channel_info)
 	else
 	{
 		if (thd_manager->add_thd(thd)) {
-			thd_manager->put_thd(thd);
+			thd_manager->put_back(thd);
 		}
 	}
 }
