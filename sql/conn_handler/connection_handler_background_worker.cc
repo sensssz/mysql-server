@@ -66,7 +66,7 @@ static void *process_client_requests(void *)
 			if (do_res == 1)
 			{
 				// End of transaction, put it back
-				manager->put_back(thd);
+				manager->put_thd(thd);
 				break;
 			}
 			else if (do_res == 2)

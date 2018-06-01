@@ -21,6 +21,7 @@
 #include "mysql/service_thd_wait.h"
 #include "mysqld_error.h"              // ER_*
 #include "channel_info.h"              // Channel_info
+#include "mysqld_thd_manager.h"
 #include "connection_handler_impl.h"   // Per_thread_connection_handler
 #include "mysqld.h"                    // max_connections
 #include "plugin_connection_handler.h" // Plugin_connection_handler
@@ -211,6 +212,15 @@ void Connection_handler_manager::wait_till_no_connection()
 void Connection_handler_manager::destroy_instance()
 {
   Per_thread_connection_handler::destroy();
+
+	if (thread_handling == SCHEDULER_BACKGROUND_WORKER) {
+		Global_THD_manager *manager = Global_THD_manager::get_instance();
+		for (ulong i = 0; i < num_workers; i++) {
+			manager->put_thd(NULL);
+		}
+		while (manager->thd_size() != 0) {
+		}
+	}
 
   if (m_instance != NULL)
   {

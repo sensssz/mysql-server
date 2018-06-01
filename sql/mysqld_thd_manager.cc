@@ -126,14 +126,6 @@ Global_THD_manager::Global_THD_manager()
 
 Global_THD_manager::~Global_THD_manager()
 {
-	if (Connection_handler_manager::thread_handling ==
-			Connection_handler_manager::SCHEDULER_BACKGROUND_WORKER) {
-		for (ulong i = 0; i < num_workers; i++) {
-			thds.enqueue(NULL);
-		}
-		while (thds.size_approx() != 0) {
-		}
-	}
   thread_ids.erase_unique(reserved_thread_id);
   DBUG_ASSERT(thd_list.empty());
   DBUG_ASSERT(thread_ids.empty());

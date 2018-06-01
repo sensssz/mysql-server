@@ -143,9 +143,12 @@ public:
 		return thd;
 	}
 
-	void put_back(THD *thd) {
+	void put_thd(THD *thd)
+	{
 		thds.enqueue(thd);
 	}
+
+	size_t thd_size() { return thds.size_approx(); }
 
   /**
     Retrieves thread running statistic variable.
