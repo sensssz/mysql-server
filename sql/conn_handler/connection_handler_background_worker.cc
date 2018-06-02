@@ -63,6 +63,10 @@ static void *process_client_requests(void *)
 			int do_res = do_command(thd);
 			if (do_res == 1 || is_timeout)
 			{
+				if (is_timeout)
+				{
+					thd->get_protocol_classic()->get_net()->error = 0;
+				}
 				// End of transaction, put it back
 				manager->put_back(thd);
 				break;
