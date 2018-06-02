@@ -32,6 +32,7 @@
 ulong num_workers;
 extern __thread int is_timeout;
 
+__attribute__((unused))
 static void print(THD *thd, const std::string &message)
 {
 	if (thd->thread_id() < 10)
@@ -53,7 +54,6 @@ static void *process_client_requests(void *)
 		THD *thd = manager->get_thd();
 		thd->store_globals();
 		thd_set_thread_stack(thd, (char*) &thd);
-		thd->variables.net_wait_timeout = 5;
 #ifdef HAVE_PSI_THREAD_INTERFACE
 		/*
 		 Reusing existing pthread:
@@ -210,6 +210,13 @@ static void create_thd(Channel_info *channel_info)
 	else
 	{
 		thd_manager->add_thd(thd);
+		// Process 9 more commands to finalize establishment of of the connection of JDBC.
+		// Note that this must happen after thd_manager->add_thd.
+		for (int i = 0; i < 9; i++)
+		{
+			do_command(thd);
+			DBUG_ASSERT(thd_connection_alive(thd));
+		}
 		thd_manager->put_back(thd);
 	}
 }
