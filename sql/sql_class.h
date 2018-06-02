@@ -1520,8 +1520,6 @@ private:
   */
   LEX_CSTRING m_db;
 
-	bool logged_in;
-
 public:
 
   /**
@@ -1545,10 +1543,6 @@ public:
   Relay_log_info* rli_fake;
   /* Slave applier execution context */
   Relay_log_info* rli_slave;
-
-	bool has_logged_in() const { return logged_in; }
-
-	void set_logged_in(bool logged_in_in) { logged_in = logged_in_in; }
 
   /**
     The function checks whether the thread is processing queries from binlog,
@@ -2229,7 +2223,7 @@ public:
 #endif /* MYSQL_CLIENT */
 
 private:
-  std::unique_ptr<Transaction_ctx> m_transaction;
+  std::auto_ptr<Transaction_ctx> m_transaction;
 
   /** An utility struct for @c Attachable_trx */
   struct Transaction_state

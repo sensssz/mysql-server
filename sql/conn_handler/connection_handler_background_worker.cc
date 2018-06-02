@@ -32,67 +32,6 @@
 ulong num_workers;
 extern __thread int is_timeout;
 
-static void terminate_connection(THD *thd)
-{
-	end_connection(thd);
-	close_connection(thd, 0, false, false);
-
-	thd->get_stmt_da()->reset_diagnostics_area();
-	thd->release_resources();
-
-	Global_THD_manager::get_instance()->remove_thd(thd);
-	Connection_handler_manager::dec_connection_count();
-
-#ifdef HAVE_PSI_THREAD_INTERFACE
-	/*
-	 Delete the instrumentation for the job that just completed.
-	 */
-	thd->set_psi(NULL);
-	PSI_THREAD_CALL(delete_current_thread)();
-#endif /* HAVE_PSI_THREAD_INTERFACE */
-
-	delete thd;
-}
-
-static bool login(THD *thd)
-{
-	Connection_handler_manager *handler_manager = Connection_handler_manager::get_instance();
-	if (thd_prepare_connection(thd))
-	{
-		handler_manager->inc_aborted_connects();
-		close_connection(thd, 0, false, false);
-		thd->get_stmt_da()->reset_diagnostics_area();
-		thd->release_resources();
-		Global_THD_manager::get_instance()->remove_thd(thd);
-		Connection_handler_manager::dec_connection_count();
-		// Clean up errors now, before possibly waiting for a new connection.
-		ERR_remove_state(0);
-
-#ifdef HAVE_PSI_THREAD_INTERFACE
-		/*
-		 Delete the instrumentation for the job that just completed.
-		 */
-		thd->set_psi(NULL);
-		PSI_THREAD_CALL(delete_current_thread)();
-#endif /* HAVE_PSI_THREAD_INTERFACE */
-
-		delete thd;
-		return false;
-	}
-	// Process 8 more commands to finish establishing the connection with JDBC.
-	for (int i = 0; i < 8; i++)
-	{
-		do_command(thd);
-		if (!thd_connection_alive(thd))
-		{
-			std::cerr << "Error while establishing connection" << std::endl;
-			terminate_connection(thd);
-		}
-	}
-	thd->set_logged_in(true);
-	return true;
-}
-
 static void *process_client_requests(void *)
 {
 	my_thread_init();
@@ -102,14 +41,7 @@ static void *process_client_requests(void *)
 		THD *thd = manager->get_thd();
 		thd->store_globals();
 		thd_set_thread_stack(thd, (char*) &thd);
-		if (!thd->has_logged_in())
-		{
-			if (login(thd))
-			{
-				manager->put_back(thd);
-			}
-			continue;
-		}
+		thd->variables.net_wait_timeout = 5;
 #ifdef HAVE_PSI_THREAD_INTERFACE
 		/*
 		 Reusing existing pthread:
@@ -131,17 +63,30 @@ static void *process_client_requests(void *)
 			int do_res = do_command(thd);
 			if (do_res == 1 || is_timeout)
 			{
-				if (is_timeout)
-				{
-					thd->get_protocol_classic()->get_net()->error = 0;
-				}
 				// End of transaction, put it back
 				manager->put_back(thd);
 				break;
 			}
 			else if (do_res == 2)
 			{
-				terminate_connection(thd);
+				end_connection(thd);
+				close_connection(thd, 0, false, false);
+
+				thd->get_stmt_da()->reset_diagnostics_area();
+				thd->release_resources();
+
+				manager->remove_thd(thd);
+				Connection_handler_manager::dec_connection_count();
+
+#ifdef HAVE_PSI_THREAD_INTERFACE
+				/*
+				 Delete the instrumentation for the job that just completed.
+				 */
+				thd->set_psi(NULL);
+				PSI_THREAD_CALL(delete_current_thread)();
+#endif /* HAVE_PSI_THREAD_INTERFACE */
+
+				delete thd;
 				break;
 			}
 		}
@@ -191,6 +136,23 @@ static THD* init_new_thd(Channel_info *channel_info)
   thd->start_utime= thd->thr_create_utime= my_micro_time();
   delete channel_info;
 
+  /*
+    handle_one_connection() is normally the only way a thread would
+    start and would always be on the very high end of the stack ,
+    therefore, the thread stack always starts at the address of the
+    first local variable of handle_one_connection, which is thd. We
+    need to know the start of the stack so that we could check for
+    stack overruns.
+  */
+  thd_set_thread_stack(thd, (char*) &thd);
+  if (thd->store_globals())
+  {
+    close_connection(thd, ER_OUT_OF_RESOURCES);
+    thd->release_resources();
+    delete thd;
+    return NULL;
+  }
+
   return thd;
 }
 
@@ -198,6 +160,16 @@ static void create_thd(Channel_info *channel_info)
 {
 	Global_THD_manager *thd_manager= Global_THD_manager::get_instance();
 	Connection_handler_manager *handler_manager= Connection_handler_manager::get_instance();
+
+	if (my_thread_init())
+	{
+		connection_errors_internal++;
+		channel_info->send_error_and_close_channel(ER_OUT_OF_RESOURCES, 0, false);
+		handler_manager->inc_aborted_connects();
+		Connection_handler_manager::dec_connection_count();
+		delete channel_info;
+		return;
+	}
 
 	THD *thd= init_new_thd(channel_info);
 	if (thd == NULL)
@@ -209,8 +181,33 @@ static void create_thd(Channel_info *channel_info)
 		return;
 	}
 
-	thd_manager->add_thd(thd);
-	thd_manager->put_back(thd);
+	if (thd_prepare_connection(thd))
+	{
+		handler_manager->inc_aborted_connects();
+		close_connection(thd, 0, false, false);
+		thd->get_stmt_da()->reset_diagnostics_area();
+		thd->release_resources();
+		Connection_handler_manager::dec_connection_count();
+		// Clean up errors now, before possibly waiting for a new connection.
+		ERR_remove_state(0);
+
+#ifdef HAVE_PSI_THREAD_INTERFACE
+		/*
+		 Delete the instrumentation for the job that just completed.
+		 */
+		thd->set_psi(NULL);
+		PSI_THREAD_CALL(delete_current_thread)();
+#endif /* HAVE_PSI_THREAD_INTERFACE */
+
+		delete thd;
+	}
+	else
+	{
+		if (thd_manager->add_thd(thd))
+		{
+			thd_manager->put_back(thd);
+		}
+	}
 }
 
 bool Background_worker_connection_handler::add_connection(Channel_info* channel_info)

@@ -1054,7 +1054,6 @@ THD::THD(bool enable_plugins)
    gtid_executed_warning_issued(false),
    m_query_string(NULL_CSTR),
    m_db(NULL_CSTR),
-   logged_in(false),
    rli_fake(0), rli_slave(NULL),
 #ifdef EMBEDDED_LIBRARY
    mysql(NULL),
@@ -1252,6 +1251,7 @@ THD::THD(bool enable_plugins)
                                               MYF(MY_WME));
   }
 }
+
 
 void THD::set_transaction(Transaction_ctx *transaction_ctx)
 {
