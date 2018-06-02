@@ -71,21 +71,25 @@ private:
 
 #ifdef HAVE_PSI_INTERFACE
 static PSI_mutex_key key_LOCK_thd_list;
+static PSI_mutex_key key_LOCK_thds;
 static PSI_mutex_key key_LOCK_thd_remove;
 static PSI_mutex_key key_LOCK_thread_ids;
 
 static PSI_mutex_info all_thd_manager_mutexes[]=
 {
   { &key_LOCK_thd_list, "LOCK_thd_list", PSI_FLAG_GLOBAL},
+	{ &key_LOCK_thds, "LOCK_thds", PSI_FLAG_GLOBAL},
   { &key_LOCK_thd_remove, "LOCK_thd_remove", PSI_FLAG_GLOBAL},
   { &key_LOCK_thread_ids, "LOCK_thread_ids", PSI_FLAG_GLOBAL }
 };
 
 static PSI_cond_key key_COND_thd_list;
+static PSI_cond_key key_COND_thds;
 
 static PSI_cond_info all_thd_manager_conds[]=
 {
-  { &key_COND_thd_list, "COND_thd_list", PSI_FLAG_GLOBAL}
+  { &key_COND_thd_list, "COND_thd_list", PSI_FLAG_GLOBAL},
+	{ &key_COND_thds, "COND_thds", PSI_FLAG_GLOBAL}
 };
 #endif // HAVE_PSI_INTERFACE
 
@@ -94,6 +98,7 @@ const my_thread_id Global_THD_manager::reserved_thread_id= 0;
 
 Global_THD_manager::Global_THD_manager()
   : thd_list(PSI_INSTRUMENT_ME),
+		num_thds(0),
     thread_ids(PSI_INSTRUMENT_ME),
     num_thread_running(0),
     thread_created(0),
@@ -110,11 +115,14 @@ Global_THD_manager::Global_THD_manager()
 
   mysql_mutex_init(key_LOCK_thd_list, &LOCK_thd_list,
                    MY_MUTEX_INIT_FAST);
+	mysql_mutex_init(key_LOCK_thds, &LOCK_thds,
+									 MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_thd_remove,
                    &LOCK_thd_remove, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_thread_ids,
                    &LOCK_thread_ids, MY_MUTEX_INIT_FAST);
   mysql_cond_init(key_COND_thd_list, &COND_thd_list);
+	mysql_cond_init(key_COND_thds, &COND_thds);
 
   // The reserved thread ID should never be used by normal threads,
   // so mark it as in-use. This ID is used by temporary THDs never
@@ -129,9 +137,11 @@ Global_THD_manager::~Global_THD_manager()
   DBUG_ASSERT(thd_list.empty());
   DBUG_ASSERT(thread_ids.empty());
   mysql_mutex_destroy(&LOCK_thd_list);
+	mysql_mutex_destroy(&LOCK_thds);
   mysql_mutex_destroy(&LOCK_thd_remove);
   mysql_mutex_destroy(&LOCK_thread_ids);
   mysql_cond_destroy(&COND_thd_list);
+	mysql_cond_destroy(&COND_thds);
 }
 
 
@@ -198,6 +208,30 @@ void Global_THD_manager::remove_thd(THD *thd)
   mysql_mutex_unlock(&LOCK_thd_remove);
   mysql_cond_broadcast(&COND_thd_list);
   mysql_mutex_unlock(&LOCK_thd_list);
+}
+
+THD *Global_THD_manager::get_thd()
+{
+	THD *thd;
+	mysql_mutex_lock(&LOCK_thds);
+	while (thds.size() == 0)
+	{
+		mysql_cond_wait(&COND_thds, &LOCK_thds);
+	}
+	thd = thds.front();
+	thds.pop_front();
+	--num_thds;
+	mysql_mutex_unlock(&LOCK_thds);
+	return thd;
+}
+
+void Global_THD_manager::put_back(THD *thd)
+{
+	mysql_mutex_lock(&LOCK_thds);
+	thds.push_back(thd);
+	++num_thds;
+	mysql_cond_signal(&COND_thds);
+	mysql_mutex_unlock(&LOCK_thds);
 }
 
 my_thread_id Global_THD_manager::get_new_thread_id()

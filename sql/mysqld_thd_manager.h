@@ -21,7 +21,7 @@
 #include "my_thread_local.h"   // my_thread_id
 #include "prealloced_array.h"
 
-#include "blockingconcurrentqueue.h"
+#include <deque>
 
 extern ulong num_workers;
 
@@ -136,17 +136,11 @@ public:
   */
   void remove_thd(THD *thd);
 
-	THD *get_thd()
-	{
-		THD *thd;
-		thds.wait_dequeue(thd);
-		return thd;
-	}
+	THD *get_thd();
 
-	void put_back(THD *thd)
-	{
-		thds.enqueue(thd);
-	}
+	void put_back(THD *thd);
+
+	size_t thd_size() { return num_thds; }
 
   /**
     Retrieves thread running statistic variable.
@@ -264,16 +258,20 @@ private:
   typedef Prealloced_array<THD*, 500, true> THD_array;
   THD_array thd_list;
 
-	moodycamel::BlockingConcurrentQueue<THD *> thds;
+	volatile size_t num_thds;
+	std::deque<THD *> thds;
 
   // Array of thread ID in current use. Protected by LOCK_thread_ids.
   typedef Prealloced_array<my_thread_id, 1000, true> Thread_id_array;
   Thread_id_array thread_ids;
 
   mysql_cond_t COND_thd_list;
+	mysql_cond_t COND_thds;
 
   // Mutex that guards thd_list
   mysql_mutex_t LOCK_thd_list;
+	// Mutex that guards thds
+	mysql_mutex_t LOCK_thds;
   // Mutex used to guard removal of elements from thd list.
   mysql_mutex_t LOCK_thd_remove;
   // Mutex protecting thread_ids

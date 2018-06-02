@@ -32,6 +32,18 @@
 ulong num_workers;
 extern __thread int is_timeout;
 
+static void print(THD *thd, const std::string &message)
+{
+	if (thd->thread_id() < 10)
+	{
+		std::cerr << "[0" + std::to_string(thd->thread_id()) + "] " + message + "\n";
+	}
+	else
+	{
+		std::cerr << "[" + std::to_string(thd->thread_id()) + "] " + message + "\n";
+	}
+}
+
 static void *process_client_requests(void *)
 {
 	my_thread_init();
@@ -165,16 +177,6 @@ static void create_thd(Channel_info *channel_info)
 	Global_THD_manager *thd_manager= Global_THD_manager::get_instance();
 	Connection_handler_manager *handler_manager= Connection_handler_manager::get_instance();
 
-	if (my_thread_init())
-	{
-		connection_errors_internal++;
-		channel_info->send_error_and_close_channel(ER_OUT_OF_RESOURCES, 0, false);
-		handler_manager->inc_aborted_connects();
-		Connection_handler_manager::dec_connection_count();
-		delete channel_info;
-		return;
-	}
-
 	THD *thd= init_new_thd(channel_info);
 	if (thd == NULL)
 	{
@@ -207,10 +209,8 @@ static void create_thd(Channel_info *channel_info)
 	}
 	else
 	{
-		if (thd_manager->add_thd(thd))
-		{
-			thd_manager->put_back(thd);
-		}
+		thd_manager->add_thd(thd);
+		thd_manager->put_back(thd);
 	}
 }
 
