@@ -6347,8 +6347,10 @@ lock_clust_rec_modify_check_and_lock(
 
 	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
 
-	err = lock_rec_lock(TRUE, mode,
-			    block, heap_no, index, thr);
+	if (lock_mode != 0) {
+		err = lock_rec_lock(TRUE, mode,
+					block, heap_no, index, thr);
+	}
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6414,8 +6416,10 @@ lock_sec_rec_modify_check_and_lock(
 
 	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
 
-	err = lock_rec_lock(TRUE, mode,
-			    block, heap_no, index, thr);
+	if (lock_mode != 0) {
+		err = lock_rec_lock(TRUE, mode,
+						block, heap_no, index, thr);
+	}
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6521,8 +6525,10 @@ lock_sec_rec_read_check_and_lock(
 
 	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
 
-	err = lock_rec_lock(FALSE, mode | gap_mode,
-			    block, heap_no, index, thr);
+	if (lock_mode != 0) {
+		err = lock_rec_lock(FALSE, mode | gap_mode,
+						block, heap_no, index, thr);
+	}
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6598,7 +6604,9 @@ lock_clust_rec_read_check_and_lock(
 
 	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
 
-	err = lock_rec_lock(FALSE, mode | gap_mode, block, heap_no, index, thr);
+	if (lock_mode != 0) {
+		err = lock_rec_lock(FALSE, mode | gap_mode, block, heap_no, index, thr);
+	}
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
