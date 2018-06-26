@@ -55,6 +55,8 @@ Created 5/7/1996 Heikki Tuuri
 
 #include <pthread.h>
 
+extern volatile int64 total_wait_time;
+
 #if (_WIN64 || _WIN32)	//  Windows
 
 #include <intrin.h>
@@ -92,6 +94,7 @@ static const ulint POPULARITY_THRESHOLD = 2000;
 static ulint popular_size = 0;
 static ulint largest_popular_size = 0;
 static ulint num_waits = 0;
+static volatile int64 transferred_waits = 0;
 
 struct rec_id_t {
 	ulint space;
@@ -185,6 +188,9 @@ lock_global_lock(
 	}
 	static bool print = true;
 	trx_t *trx = thr_get_trx(thr);
+	if (err == DB_LOCK_WAIT) {
+		my_atomic_add64(&transferred_waits, 1);
+	}
 	err = DB_SUCCESS_LOCKED_REC;
 	if (trx->global_lock_mode == lock_mode) {
 		// Already holding the lock in the required mode,
@@ -707,6 +713,8 @@ lock_sys_close(void)
 
 	lock_sys = NULL;
 
+	std::cerr << "Number of transferred waits: " << transferred_waits << std::endl;
+	std::cerr << "Total wait time: " << total_wait_time << std::endl;
 	std::cerr << "Total number of waits: " << num_waits << std::endl;
 	std::cerr << "Largest number of popular records: " << largest_popular_size << std::endl;
 }
@@ -6347,10 +6355,8 @@ lock_clust_rec_modify_check_and_lock(
 
 	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
 
-	if (lock_mode != 0) {
-		err = lock_rec_lock(TRUE, mode,
-					block, heap_no, index, thr);
-	}
+	err = lock_rec_lock(TRUE, mode,
+			    block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6415,11 +6421,9 @@ lock_sec_rec_modify_check_and_lock(
 	ulint mode = LOCK_X | LOCK_REC_NOT_GAP;
 
 	ulint lock_mode = lock_global_lock_mode(mode, block, heap_no, thr);
-
-	if (lock_mode != 0) {
-		err = lock_rec_lock(TRUE, mode,
-						block, heap_no, index, thr);
-	}
+	
+	err = lock_rec_lock(TRUE, mode,
+			    block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6525,10 +6529,8 @@ lock_sec_rec_read_check_and_lock(
 
 	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
 
-	if (lock_mode != 0) {
-		err = lock_rec_lock(FALSE, mode | gap_mode,
-						block, heap_no, index, thr);
-	}
+	err = lock_rec_lock(FALSE, mode | gap_mode,
+			    block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6604,9 +6606,7 @@ lock_clust_rec_read_check_and_lock(
 
 	ulint lock_mode = lock_global_lock_mode(mode | gap_mode, block, heap_no, thr);
 
-	if (lock_mode != 0) {
-		err = lock_rec_lock(FALSE, mode | gap_mode, block, heap_no, index, thr);
-	}
+	err = lock_rec_lock(FALSE, mode | gap_mode, block, heap_no, index, thr);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 

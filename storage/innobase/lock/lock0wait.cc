@@ -35,6 +35,8 @@ Created 25/5/2010 Sunny Bains
 #include "srv0start.h"
 #include "lock0priv.h"
 
+volatile int64 total_wait_time = 0;
+
 /*********************************************************************//**
 Print the contents of the lock_sys_t::waiting_threads array. */
 static
@@ -330,6 +332,8 @@ lock_wait_suspend_thread(
 	}
 
 	wait_time = ut_difftime(ut_time(), slot->suspend_time);
+
+	my_atomic_add64(&total_wait_time, static_cast<int64>(wait_time * 1000));
 
 	/* Release the slot for others to use */
 
