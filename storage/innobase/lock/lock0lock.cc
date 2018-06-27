@@ -66,6 +66,9 @@ static const ulint	TABLE_LOCK_CACHE = 8;
 /** Size in bytes, of the table lock instance */
 static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
+static const ulint kNumShards = 8;
+static pthread_rwlock_t *rec_locks;
+
 /** Deadlock checker. */
 class DeadlockChecker {
 public:
@@ -457,6 +460,12 @@ lock_sys_create(
 		lock_latest_err_file = os_file_create_tmpfile(NULL);
 		ut_a(lock_latest_err_file);
 	}
+
+	ulint rec_locks_size = sizeof(pthread_rwlock_t) * kNumShards;
+	rec_locks = static_cast<pthread_rwlock_t *>(ut_zalloc_nokey(rec_locks_size));
+	for (ulint i = 0; i < kNumShards; i++) {
+		pthread_rwlock_init(rec_locks + i, NULL);
+	}
 }
 
 /** Calculates the fold value of a lock: used in migrating the hash table.
@@ -555,6 +564,11 @@ lock_sys_close(void)
 		}
 	}
 
+	for (ulint i = 0; i < kNumShards; i++) {
+		pthread_rwlock_destroy(rec_locks + i);
+	}
+
+	ut_free(rec_locks);
 	ut_free(lock_sys);
 
 	lock_sys = NULL;
