@@ -7711,7 +7711,7 @@ DeadlockChecker::search()
 							 lock->trx->waiting_global_lock) {
 			my_sleep(100);
 			if (lock->trx->waiting_global_lock) {
-				m_start = lock->trx;
+				std::cerr << '[' << m_wait_lock->trx->id << "] Chosen as victim" << std::endl;
 				// Rollback the current transaction because it's impossible
 				// to cancel a waiting pthread_rwlock.
 				return m_wait_lock->trx;
