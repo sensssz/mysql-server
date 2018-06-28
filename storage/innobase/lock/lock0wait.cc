@@ -312,11 +312,7 @@ lock_wait_suspend_thread(
 		thd_wait_begin(trx->mysql_thd, THD_WAIT_TABLE_LOCK);
 	}
 
-	if (trx->type_mode != 0) {
-		lock_global_lock_if_necessary(trx);
-	} else {
-		os_event_wait(slot->event);
-	}
+	os_event_wait(slot->event);
 
 	thd_wait_end(trx->mysql_thd);
 

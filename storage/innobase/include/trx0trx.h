@@ -911,7 +911,6 @@ struct trx_t {
 	bool		abort;		/*!< if this flag is set then
 					this transaction must abort when
 					it can */
-	ulint		type_mode;
 	ulint		global_lock_mode;
 
 	trx_id_t	id;		/*!< transaction id */

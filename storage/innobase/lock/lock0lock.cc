@@ -175,15 +175,15 @@ ulint lock_global_lock_mode(
 	return 0;
 }
 
+static
 void
 lock_global_lock_if_necessary(
+	ulint type_mode,
 	trx_t *trx)
 {
-	ulint type_mode = trx->type_mode;
 	if (trx->global_lock_mode == type_mode) {
 		return;
 	}
-	std::cerr << '[' << trx->id << "] Acquring lock" << std::endl;
 	if (trx->global_lock_mode == 0) {
 		if (type_mode == LOCK_S) {
 			pthread_rwlock_rdlock(&global_lock);
@@ -200,7 +200,6 @@ lock_global_lock_if_necessary(
 	trx->global_lock_mode = type_mode;
 	// Else, we already have a write lock, which
 	// is strong enough for the required read lock
-	std::cerr << '[' << trx->id << "] Lock acquired" << std::endl;
 }
 
 static
@@ -209,17 +208,22 @@ lock_global_lock(
 	ulint lock_mode,
 	que_thr_t	*thr,
 	dberr_t &err) {
-	trx_t *trx = thr_get_trx(thr);
-	trx->type_mode = lock_mode;
 	if (err == DB_DEADLOCK ||
 			err == DB_QUE_THR_SUSPENDED ||
 			lock_mode == 0) {
 		return;
 	}
+	static bool print = true;
+	trx_t *trx = thr_get_trx(thr);
 	if (err == DB_LOCK_WAIT) {
 		my_atomic_add64(&transferred_waits, 1);
 	}
-	err = DB_LOCK_WAIT;
+	err = DB_SUCCESS_LOCKED_REC;
+	if (print) {
+		std::cerr << "Acquring lock" << std::endl;
+		print = false;
+	}
+	lock_global_lock_if_necessary(lock_mode, trx);
 }
 
 /** Deadlock checker. */
@@ -1873,16 +1877,6 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	ut_ad(trx_mutex_own(m_trx));
 
 	DEBUG_SYNC_C("rec_lock_add_to_waitq");
-
-	static bool print = true;
-
-	if (curr_is_popular) {
-		if (print) {
-			std::cerr << "Current is popular" << std::endl;
-			print = false;
-		}
-		return DB_SUCCESS_LOCKED_REC;
-	}
 
 	m_mode |= LOCK_WAIT;
 
@@ -4714,7 +4708,6 @@ lock_release(
 	if (trx->global_lock_mode != 0) {
 		pthread_rwlock_unlock(&global_lock);
 		trx->global_lock_mode = 0;
-		std::cerr << '[' << trx->id << "] Lock released" << std::endl;
 	}
 }
 
@@ -6137,13 +6130,7 @@ lock_rec_insert_check_and_lock(
 	if (lock == NULL) {
 		/* We optimize CPU time usage in the simplest case */
 
-		err = DB_SUCCESS;
-
-		ulint mode = lock_global_lock_mode(LOCK_X, block, heap_no, thr);
-
 		lock_mutex_exit();
-
-		lock_global_lock(mode, thr, err);
 
 		if (inherit_in && !dict_index_is_clust(index)) {
 			/* Update the page max trx id field */
@@ -6154,7 +6141,7 @@ lock_rec_insert_check_and_lock(
 
 		*inherit = FALSE;
 
-		return(err);
+		return(DB_SUCCESS);
 	}
 
 	/* Spatial index does not use GAP lock protection. It uses
@@ -6194,11 +6181,7 @@ lock_rec_insert_check_and_lock(
 		err = DB_SUCCESS;
 	}
 
-	ulint mode = lock_global_lock_mode(LOCK_X, block, heap_no, thr);
-
 	lock_mutex_exit();
-
-	lock_global_lock(mode, thr, err);
 
 	switch (err) {
 	case DB_SUCCESS_LOCKED_REC:
