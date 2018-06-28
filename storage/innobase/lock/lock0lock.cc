@@ -4712,12 +4712,6 @@ lock_release(
 
 		++count;
 	}
-
-	if (trx->global_lock_mode != 0) {
-		pthread_rwlock_unlock(&global_lock);
-		trx->global_lock_mode = 0;
-		std::cerr << '[' << trx->id << "] Lock released" << std::endl;
-	}
 }
 
 /* True if a lock mode is S or X */
@@ -7044,6 +7038,12 @@ lock_trx_release_locks(
 	trx_t*	trx)	/*!< in/out: transaction */
 {
 	check_trx_state(trx);
+
+	if (trx->global_lock_mode != 0) {
+		pthread_rwlock_unlock(&global_lock);
+		trx->global_lock_mode = 0;
+		std::cerr << '[' << trx->id << "] Lock released" << std::endl;
+	}
 
 	if (trx_state_eq(trx, TRX_STATE_PREPARED)) {
 
