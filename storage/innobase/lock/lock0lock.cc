@@ -183,6 +183,7 @@ lock_global_lock_if_necessary(
 	if (trx->global_lock_mode == type_mode) {
 		return;
 	}
+	std::cerr << '[' << trx->id << "] Acquring lock" << std::endl;
 	if (trx->global_lock_mode == 0) {
 		if (type_mode == LOCK_S) {
 			pthread_rwlock_rdlock(&global_lock);
@@ -199,6 +200,7 @@ lock_global_lock_if_necessary(
 	trx->global_lock_mode = type_mode;
 	// Else, we already have a write lock, which
 	// is strong enough for the required read lock
+	std::cerr << '[' << trx->id << "] Lock acquired" << std::endl;
 }
 
 static
@@ -4712,6 +4714,7 @@ lock_release(
 	if (trx->global_lock_mode != 0) {
 		pthread_rwlock_unlock(&global_lock);
 		trx->global_lock_mode = 0;
+		std::cerr << '[' << trx->id << "] Lock released" << std::endl;
 	}
 }
 
