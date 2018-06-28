@@ -7712,7 +7712,9 @@ DeadlockChecker::search()
 			my_sleep(100);
 			if (lock->trx->waiting_global_lock) {
 				m_start = lock->trx;
-				return select_victim();
+				// Rollback the current transaction because it's impossible
+				// to cancel a waiting pthread_rwlock.
+				return m_wait_lock->trx;
 			}
 		} else if (!lock_has_to_wait(m_wait_lock, lock)) {
 
