@@ -186,16 +186,22 @@ lock_global_lock_if_necessary(
 	}
 	if (trx->global_lock_mode == 0) {
 		if (type_mode == LOCK_S) {
+			trx->waiting_global_lock = true;
 			pthread_rwlock_rdlock(&global_lock);
+			trx->waiting_global_lock = false;
 		} else if (type_mode == LOCK_X) {
+			trx->waiting_global_lock = true;
 			pthread_rwlock_wrlock(&global_lock);
+			trx->waiting_global_lock = false;
 		}
 	} else if (trx->global_lock_mode == LOCK_S) {
 		// Need to upgrade the lock to X lock
 		// To prevent deadlock, unlock it lock it
 		ut_a(type_mode == LOCK_X);
 		pthread_rwlock_unlock(&global_lock);
+		trx->waiting_global_lock = true;
 		pthread_rwlock_wrlock(&global_lock);
+		trx->waiting_global_lock = false;
 	}
 	trx->global_lock_mode = type_mode;
 	// Else, we already have a write lock, which
@@ -6132,6 +6138,8 @@ lock_rec_insert_check_and_lock(
 
 		lock_mutex_exit();
 
+		lock_global_lock_if_necessary(LOCK_X, trx);
+
 		if (inherit_in && !dict_index_is_clust(index)) {
 			/* Update the page max trx id field */
 			page_update_max_trx_id(block,
@@ -7696,6 +7704,13 @@ DeadlockChecker::search()
 			/* Backtrack */
 			lock = NULL;
 
+		} else if (m_wait_lock->trx->global_lock_mode != 0 &&
+							 lock->trx->waiting_global_lock) {
+			my_sleep(100);
+			if (lock->trx->waiting_global_lock) {
+				m_start = lock->trx;
+				return select_victim();
+			}
 		} else if (!lock_has_to_wait(m_wait_lock, lock)) {
 
 			/* No conflict, next lock */
