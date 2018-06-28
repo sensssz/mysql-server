@@ -1882,7 +1882,6 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 		return DB_SUCCESS_LOCKED_REC;
 	}
 
-
 	m_mode |= LOCK_WAIT;
 
 	/* Do the preliminary checks, and set query thread state */
