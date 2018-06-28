@@ -1367,6 +1367,7 @@ trx_start_low(
 	/* The initial value for trx->no: TRX_ID_MAX is used in
 	read_view_open_now: */
 
+	trx->type_mode = 0;
 	trx->global_lock_mode = 0;
 
 	trx->no = TRX_ID_MAX;

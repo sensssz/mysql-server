@@ -175,49 +175,49 @@ ulint lock_global_lock_mode(
 	return 0;
 }
 
+void
+lock_global_lock_if_necessary(
+	trx_t *trx)
+{
+	ulint type_mode = trx->type_mode;
+	if (trx->global_lock_mode == type_mode) {
+		return;
+	}
+	if (trx->global_lock_mode == 0) {
+		if (type_mode == LOCK_S) {
+			pthread_rwlock_rdlock(&global_lock);
+		} else if (type_mode == LOCK_X) {
+			pthread_rwlock_wrlock(&global_lock);
+		}
+	} else if (trx->global_lock_mode == LOCK_S) {
+		// Need to upgrade the lock to X lock
+		// To prevent deadlock, unlock it lock it
+		ut_a(type_mode == LOCK_X);
+		pthread_rwlock_unlock(&global_lock);
+		pthread_rwlock_wrlock(&global_lock);
+	}
+	trx->global_lock_mode = type_mode;
+	// Else, we already have a write lock, which
+	// is strong enough for the required read lock
+}
+
 static
 void
 lock_global_lock(
 	ulint lock_mode,
 	que_thr_t	*thr,
 	dberr_t &err) {
+	trx_t *trx = thr_get_trx(thr);
+	trx->type_mode = lock_mode;
 	if (err == DB_DEADLOCK ||
 			err == DB_QUE_THR_SUSPENDED ||
 			lock_mode == 0) {
 		return;
 	}
-	static bool print = true;
-	trx_t *trx = thr_get_trx(thr);
 	if (err == DB_LOCK_WAIT) {
 		my_atomic_add64(&transferred_waits, 1);
 	}
-	err = DB_SUCCESS_LOCKED_REC;
-	if (trx->global_lock_mode == lock_mode) {
-		// Already holding the lock in the required mode,
-		// no need to do anything
-		return;
-	}
-	if (print) {
-		std::cerr << "Acquring lock" << std::endl;
-		print = false;
-	}
-	if (trx->global_lock_mode == 0) {
-		if (lock_mode == LOCK_S) {
-			pthread_rwlock_rdlock(&global_lock);
-		} else if (lock_mode == LOCK_X) {
-			pthread_rwlock_wrlock(&global_lock);
-		}
-		trx->global_lock_mode = lock_mode;
-	} else if (trx->global_lock_mode == LOCK_S) {
-		// Need to upgrade the lock to X lock
-		// To prevent deadlock, unlock it lock it
-		ut_a(lock_mode == LOCK_X);
-		pthread_rwlock_unlock(&global_lock);
-		pthread_rwlock_wrlock(&global_lock);
-		trx->global_lock_mode = lock_mode;
-	}
-	// Else, we already have a write lock, which
-	// is strong enough for the required read lock
+	err = DB_LOCK_WAIT;
 }
 
 /** Deadlock checker. */
@@ -712,6 +712,8 @@ lock_sys_close(void)
 	ut_free(lock_sys);
 
 	lock_sys = NULL;
+
+	pthread_rwlock_destroy(&global_lock);
 
 	std::cerr << "Number of transferred waits: " << transferred_waits << std::endl;
 	std::cerr << "Total wait time: " << total_wait_time << std::endl;
@@ -1869,6 +1871,17 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	ut_ad(trx_mutex_own(m_trx));
 
 	DEBUG_SYNC_C("rec_lock_add_to_waitq");
+
+	static bool print = true;
+
+	if (curr_is_popular) {
+		if (print) {
+			std::cerr << "Current is popular" << std::endl;
+			print = false;
+		}
+		return DB_SUCCESS_LOCKED_REC;
+	}
+
 
 	m_mode |= LOCK_WAIT;
 
@@ -6122,7 +6135,13 @@ lock_rec_insert_check_and_lock(
 	if (lock == NULL) {
 		/* We optimize CPU time usage in the simplest case */
 
+		err = DB_SUCCESS;
+
+		ulint mode = lock_global_lock_mode(LOCK_X, block, heap_no, thr);
+
 		lock_mutex_exit();
+
+		lock_global_lock(mode, thr, err);
 
 		if (inherit_in && !dict_index_is_clust(index)) {
 			/* Update the page max trx id field */
@@ -6133,7 +6152,7 @@ lock_rec_insert_check_and_lock(
 
 		*inherit = FALSE;
 
-		return(DB_SUCCESS);
+		return(err);
 	}
 
 	/* Spatial index does not use GAP lock protection. It uses
@@ -6173,7 +6192,11 @@ lock_rec_insert_check_and_lock(
 		err = DB_SUCCESS;
 	}
 
+	ulint mode = lock_global_lock_mode(LOCK_X, block, heap_no, thr);
+
 	lock_mutex_exit();
+
+	lock_global_lock(mode, thr, err);
 
 	switch (err) {
 	case DB_SUCCESS_LOCKED_REC:
@@ -6269,6 +6292,7 @@ lock_rec_convert_impl_to_expl(
 	dict_index_t*		index,	/*!< in: index of record */
 	const ulint*		offsets)/*!< in: rec_get_offsets(rec, index) */
 {
+	return;
 	trx_t*		trx;
 
 	ut_ad(!lock_mutex_own());

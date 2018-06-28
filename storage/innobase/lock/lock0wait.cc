@@ -203,6 +203,11 @@ lock_wait_suspend_thread(
 
 	trx = thr_get_trx(thr);
 
+	if (trx->type_mode != 0) {
+		lock_global_lock_if_necessary(trx);
+		return;
+	}
+
 	if (trx->mysql_thd != 0) {
 		DEBUG_SYNC_C("lock_wait_suspend_thread_enter");
 	}
