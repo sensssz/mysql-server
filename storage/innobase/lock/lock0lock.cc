@@ -1886,6 +1886,7 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 
 	DEBUG_SYNC_C("rec_lock_add_to_waitq");
 
+	static bool print = true;
 	if (curr_is_popular) {
 		if (print) {
 			std::cerr << "Current is popular" << std::endl;
