@@ -175,7 +175,6 @@ ulint lock_global_lock_mode(
 	return 0;
 }
 
-static
 void
 lock_global_lock_if_necessary(
 	ulint type_mode,
@@ -216,22 +215,23 @@ lock_global_lock(
 	ulint lock_mode,
 	que_thr_t	*thr,
 	dberr_t &err) {
+	trx_t *trx = thr_get_trx(thr);
+	trx->type_mode = lock_mode;
 	if (err == DB_DEADLOCK ||
 			err == DB_QUE_THR_SUSPENDED ||
 			lock_mode == 0) {
 		return;
 	}
 	static bool print = true;
-	trx_t *trx = thr_get_trx(thr);
 	if (err == DB_LOCK_WAIT) {
 		my_atomic_add64(&transferred_waits, 1);
 	}
-	err = DB_SUCCESS_LOCKED_REC;
+	err = DB_LOCK_WAIT;
 	if (print) {
 		std::cerr << "Acquring lock" << std::endl;
 		print = false;
 	}
-	lock_global_lock_if_necessary(lock_mode, trx);
+//	lock_global_lock_if_necessary(lock_mode, trx);
 }
 
 /** Deadlock checker. */
@@ -1885,6 +1885,14 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	ut_ad(trx_mutex_own(m_trx));
 
 	DEBUG_SYNC_C("rec_lock_add_to_waitq");
+
+	if (curr_is_popular) {
+		if (print) {
+			std::cerr << "Current is popular" << std::endl;
+			print = false;
+		}
+		return DB_SUCCESS_LOCKED_REC;
+	}
 
 	m_mode |= LOCK_WAIT;
 
@@ -6133,9 +6141,13 @@ lock_rec_insert_check_and_lock(
 	if (lock == NULL) {
 		/* We optimize CPU time usage in the simplest case */
 
+		ulint lock_mode = lock_global_lock_mode(LOCK_X, block, heap_no, thr);
+
 		lock_mutex_exit();
 
-		lock_global_lock_if_necessary(LOCK_X, trx);
+		err = DB_SUCCESS;
+
+		lock_global_lock(lock_mode, thr, err);
 
 		if (inherit_in && !dict_index_is_clust(index)) {
 			/* Update the page max trx id field */
@@ -6146,7 +6158,7 @@ lock_rec_insert_check_and_lock(
 
 		*inherit = FALSE;
 
-		return(DB_SUCCESS);
+		return(err);
 	}
 
 	/* Spatial index does not use GAP lock protection. It uses
@@ -6172,6 +6184,8 @@ lock_rec_insert_check_and_lock(
 	const lock_t*	wait_for = lock_rec_other_has_conflicting(
 				type_mode, block, heap_no, trx);
 
+	ulint mode = lock_global_lock_mode(type_mode, block, heap_no, thr);
+
 	if (wait_for != NULL) {
 
 		RecLock	rec_lock(thr, index, block, heap_no, type_mode);
@@ -6187,6 +6201,8 @@ lock_rec_insert_check_and_lock(
 	}
 
 	lock_mutex_exit();
+
+	lock_global_lock(mode, thr, err);
 
 	switch (err) {
 	case DB_SUCCESS_LOCKED_REC:

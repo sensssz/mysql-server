@@ -912,6 +912,7 @@ struct trx_t {
 					this transaction must abort when
 					it can */
 	bool		waiting_global_lock;
+	ulint		type_mode;
 	ulint		global_lock_mode;
 
 	trx_id_t	id;		/*!< transaction id */
