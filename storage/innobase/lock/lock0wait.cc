@@ -206,6 +206,7 @@ lock_wait_suspend_thread(
 	if (trx->type_mode != 0) {
 		lock_global_lock_if_necessary(trx->type_mode, trx);
 		trx->error_state = DB_SUCCESS;
+		trx->type_mode =0;
 		return;
 	}
 

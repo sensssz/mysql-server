@@ -183,7 +183,7 @@ lock_global_lock_if_necessary(
 	if (trx->global_lock_mode == type_mode) {
 		return;
 	}
-	std::cerr << '[' << trx->id << "] Acquring lock" << std::endl;
+//	std::cerr << '[' << trx->id << "] Acquring lock" << std::endl;
 	if (trx->global_lock_mode == 0) {
 		if (type_mode == LOCK_S) {
 			trx->waiting_global_lock = true;
@@ -204,7 +204,7 @@ lock_global_lock_if_necessary(
 		trx->waiting_global_lock = false;
 	}
 	trx->global_lock_mode = type_mode;
-	std::cerr << '[' << trx->id << "] Lock acquired" << std::endl;
+//	std::cerr << '[' << trx->id << "] Lock acquired" << std::endl;
 	// Else, we already have a write lock, which
 	// is strong enough for the required read lock
 }
@@ -226,7 +226,11 @@ lock_global_lock(
 	if (err == DB_LOCK_WAIT) {
 		my_atomic_add64(&transferred_waits, 1);
 	}
-	err = DB_LOCK_WAIT;
+	if (trx->global_lock_mode != lock_mode) {
+		err = DB_LOCK_WAIT;
+	} else {
+		err = DB_SUCCESS_LOCKED_REC;
+	}
 	if (print) {
 		std::cerr << "Acquring lock" << std::endl;
 		print = false;
@@ -6159,6 +6163,10 @@ lock_rec_insert_check_and_lock(
 
 		*inherit = FALSE;
 
+		if (err == DB_SUCCESS_LOCKED_REC) {
+			err = DB_SUCCESS;
+		}
+
 		return(err);
 	}
 
@@ -7059,7 +7067,7 @@ lock_trx_release_locks(
 	if (trx->global_lock_mode != 0) {
 		pthread_rwlock_unlock(&global_lock);
 		trx->global_lock_mode = 0;
-		std::cerr << '[' << trx->id << "] Lock released" << std::endl;
+//		std::cerr << '[' << trx->id << "] Lock released" << std::endl;
 	}
 
 	if (trx_state_eq(trx, TRX_STATE_PREPARED)) {
