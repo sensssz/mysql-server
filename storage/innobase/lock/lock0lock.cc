@@ -184,6 +184,10 @@ lock_global_lock_if_necessary(
 		return;
 	}
 //	std::cerr << '[' << trx->id << "] Acquring lock" << std::endl;
+	ulint sec;
+	ulint ms;
+	ut_usectime(&sec, &ms);
+	ulint start = sec * 1000000 + ms;
 	if (trx->global_lock_mode == 0) {
 		if (type_mode == LOCK_S) {
 			trx->waiting_global_lock = true;
@@ -204,6 +208,10 @@ lock_global_lock_if_necessary(
 		trx->waiting_global_lock = false;
 	}
 	trx->global_lock_mode = type_mode;
+	ut_usectime(&sec, &ms);
+	ulint end = sec * 1000000 + ms;
+	int64 wait_time = static<int64>(end - start);
+	my_atomic_add64(&total_wait_time, wait_time);
 //	std::cerr << '[' << trx->id << "] Lock acquired" << std::endl;
 	// Else, we already have a write lock, which
 	// is strong enough for the required read lock
