@@ -210,7 +210,7 @@ lock_global_lock_if_necessary(
 	trx->global_lock_mode = type_mode;
 	ut_usectime(&sec, &ms);
 	ulint end = sec * 1000000 + ms;
-	int64 wait_time = static<int64>(end - start);
+	int64 wait_time = static_cast<int64>(end - start);
 	my_atomic_add64(&total_wait_time, wait_time);
 //	std::cerr << '[' << trx->id << "] Lock acquired" << std::endl;
 	// Else, we already have a write lock, which
