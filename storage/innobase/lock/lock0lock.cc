@@ -49,6 +49,7 @@ Created 5/7/1996 Heikki Tuuri
 #include "row0mysql.h"
 #include "pars0pars.h"
 
+#include <fstream>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -766,10 +767,11 @@ lock_sys_close(void)
 
 	pthread_rwlock_destroy(&global_lock);
 
-	std::cerr << "Number of transferred waits: " << transferred_waits << std::endl;
-	std::cerr << "Total wait time: " << total_wait_time << std::endl;
-	std::cerr << "Total number of waits: " << num_waits << std::endl;
-	std::cerr << "Largest number of popular records: " << largest_popular_size << std::endl;
+	std::ofstream outfile("stats_" + std::to_string(POPULARITY_THRESHOLD));
+	outfile << "Number of transferred waits: " << transferred_waits << std::endl;
+	outfile << "Total wait time: " << total_wait_time << std::endl;
+	outfile << "Total number of waits: " << num_waits << std::endl;
+	outfile << "Largest number of popular records: " << largest_popular_size << std::endl;
 }
 
 /*********************************************************************//**
