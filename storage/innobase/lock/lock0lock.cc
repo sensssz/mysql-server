@@ -222,9 +222,10 @@ void
 lock_global_lock(
 	ulint lock_mode,
 	que_thr_t	*thr,
-	dberr_t &err) {
+	dberr_t &err)
+{
 	trx_t *trx = thr_get_trx(thr);
-	trx->type_mode = lock_mode;
+	trx->type_mode = 0;
 	if (err == DB_DEADLOCK ||
 			err == DB_QUE_THR_SUSPENDED ||
 			lock_mode == 0) {
@@ -243,7 +244,31 @@ lock_global_lock(
 		std::cerr << "Acquring lock" << std::endl;
 		print = false;
 	}
-//	lock_global_lock_if_necessary(lock_mode, trx);
+	lock_global_lock_if_necessary(lock_mode, trx);
+}
+
+static
+void
+lock_set_trx_type_mode(
+	ulint lock_mode,
+	que_thr_t	*thr,
+	dberr_t &err)
+{
+	trx_t *trx = thr_get_trx(thr);
+	trx->type_mode = lock_mode;
+	if (err == DB_DEADLOCK ||
+			err == DB_QUE_THR_SUSPENDED ||
+			lock_mode == 0) {
+		return;
+	}
+	if (err == DB_LOCK_WAIT) {
+		my_atomic_add64(&transferred_waits, 1);
+	}
+	if (trx->global_lock_mode != lock_mode) {
+		err = DB_LOCK_WAIT;
+	} else {
+		err = DB_SUCCESS_LOCKED_REC;
+	}
 }
 
 /** Deadlock checker. */
@@ -6160,7 +6185,7 @@ lock_rec_insert_check_and_lock(
 
 		err = DB_SUCCESS;
 
-		lock_global_lock(lock_mode, thr, err);
+		lock_set_trx_type_mode(lock_mode, thr, err);
 
 		if (inherit_in && !dict_index_is_clust(index)) {
 			/* Update the page max trx id field */
@@ -6219,7 +6244,7 @@ lock_rec_insert_check_and_lock(
 
 	lock_mutex_exit();
 
-	lock_global_lock(mode, thr, err);
+	lock_set_trx_type_mode(mode, thr, err);
 
 	switch (err) {
 	case DB_SUCCESS_LOCKED_REC:
