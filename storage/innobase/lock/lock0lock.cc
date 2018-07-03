@@ -742,7 +742,7 @@ void
 create_stat_file_if_not_exists()
 {
 	std::ifstream fin("../stats");
-	if (f.good()) {
+	if (fin.good()) {
 		return;
 	}
 	std::ofstream fout("../stats");
