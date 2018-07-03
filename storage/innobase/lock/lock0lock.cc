@@ -788,10 +788,10 @@ lock_sys_close(void)
 	create_stat_file_if_not_exists();
 	std::ofstream outfile("../stats", std::ofstream::out | std::ofstream::app);
 	if (ORIGINAL) {
-		outfile << "ORIGINAL\t\t" << total_wait_time << "\t\t"
+		outfile << "ORIGINAL\t" << total_wait_time << "\t\t"
 						<< num_waits << "\t\t" << largest_popular_size << std::endl;
 	} else {
-		outfile << POPULARITY_THRESHOLD << "\t\t" << total_wait_time << "\t\t"
+		outfile << POPULARITY_THRESHOLD << '\t' << total_wait_time << "\t\t"
 						<< num_waits << "\t\t" << largest_popular_size << std::endl;
 	}
 }
