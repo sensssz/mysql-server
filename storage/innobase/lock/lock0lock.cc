@@ -791,7 +791,7 @@ lock_sys_close(void)
 		outfile << POPULARITY_THRESHOLD << '\t' << total_wait_time << '\t'
 						<< num_waits << '\t' << largest_popular_size << std::endl;
 	} else {
-		outfile << 'ORIGINAL' << '\t' << total_wait_time << '\t'
+		outfile << "ORIGINAL\t" << total_wait_time << '\t'
 						<< num_waits << '\t' << largest_popular_size << std::endl;
 	}
 }
