@@ -91,6 +91,7 @@ static const ulint	TABLE_LOCK_CACHE = 8;
 static const ulint	TABLE_LOCK_SIZE = sizeof(ib_lock_t);
 
 static const ulint POPULARITY_THRESHOLD = 2000;
+static const bool ORIGINAL = true;
 
 static ulint popular_size = 0;
 static ulint largest_popular_size = 0;
@@ -137,6 +138,9 @@ ulint lock_global_lock_mode(
 	ulint heap_no,
 	que_thr_t	*thr)
 {
+	if (ORIGINAL) {
+		return 0;
+	}
 	ulint now = rdtsc();
 	rec_id_t rec_id(block->page.id.space(), block->page.id.page_no(), heap_no);
 	rec_stat_t &rec_stat = rec_stats[rec_id];
@@ -742,7 +746,7 @@ create_stat_file_if_not_exists()
 		return;
 	}
 	std::ofstream fout("../stats");
-	fout << "WaitTime\tWaitCount\tPopular" << std::endl;
+	fout << "Threshold\tWaitTime\tWaitCount\tPopular" << std::endl;
 	fout.close();
 	return;
 }
@@ -783,7 +787,13 @@ lock_sys_close(void)
 
 	create_stat_file_if_not_exists();
 	std::ofstream outfile("../stats", std::ofstream::out | std::ofstream::app);
-	outfile << total_wait_time << '\t' << num_waits << '\t' << largest_popular_size << std::endl;
+	if (ORIGINAL) {
+		outfile << POPULARITY_THRESHOLD << '\t' << total_wait_time << '\t'
+						<< num_waits << '\t' << largest_popular_size << std::endl;
+	} else {
+		outfile << 'ORIGINAL' << '\t' << total_wait_time << '\t'
+						<< num_waits << '\t' << largest_popular_size << std::endl;
+	}
 }
 
 /*********************************************************************//**
