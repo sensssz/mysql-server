@@ -2223,7 +2223,7 @@ public:
 #endif /* MYSQL_CLIENT */
 
 private:
-  std::auto_ptr<Transaction_ctx> m_transaction;
+  std::unique_ptr<Transaction_ctx> m_transaction;
 
   /** An utility struct for @c Attachable_trx */
   struct Transaction_state

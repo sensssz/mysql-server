@@ -733,6 +733,20 @@ lock_sys_resize(
 	lock_mutex_exit();
 }
 
+static
+void
+create_stat_file_if_not_exists()
+{
+	std::ifstream fin("../stats");
+	if (f.good()) {
+		return;
+	}
+	std::ofstream fout("../stats");
+	fout << "WaitTime\tWaitCount\tPopular" << std::endl;
+	fout.close();
+	return;
+}
+
 /*********************************************************************//**
 Closes the lock system at database shutdown. */
 void
@@ -767,11 +781,9 @@ lock_sys_close(void)
 
 	pthread_rwlock_destroy(&global_lock);
 
-	std::ofstream outfile("stats_" + std::to_string(POPULARITY_THRESHOLD));
-	outfile << "Number of transferred waits: " << transferred_waits << std::endl;
-	outfile << "Total wait time: " << total_wait_time << std::endl;
-	outfile << "Total number of waits: " << num_waits << std::endl;
-	outfile << "Largest number of popular records: " << largest_popular_size << std::endl;
+	create_stat_file_if_not_exists();
+	std::ofstream outfile("../stats", std::ofstream::out | std::ofstream::app);
+	outfile << total_wait_time << '\t' << num_waits << '\t' << largest_popular_size << std::endl;
 }
 
 /*********************************************************************//**
