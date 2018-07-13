@@ -256,7 +256,9 @@ struct lock_t {
 
 	long on_released()
 	{
-		assert(granted);
+		if (!granted) {
+			return 0;
+		}
 		auto now = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(now - granted_time);
 		return duration.count();

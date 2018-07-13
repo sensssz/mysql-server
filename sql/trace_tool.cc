@@ -74,7 +74,7 @@ int TraceTool::ParseNewQuery(const char *query, size_t len)
 }
 
 void TraceTool::AddRemainingTimeRecord(long remaining_time) {
-	if (trx_id == -1 || !ShouldMeasure()) {
+	if (trx_id == -1 || !ShouldMeasure() || remaining_time <= 0) {
 		return;
 	}
 	records_.push_back(RemainingTimeRecord(trx_id, trx_type, remaining_time));
