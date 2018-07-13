@@ -490,9 +490,6 @@ THD::THD(bool enable_plugins)
   m_resource_group_ctx.m_switch_resource_group_str[0]= '\0';
   m_resource_group_ctx.m_warn= 0;
 
-	trx_avg_remaining.first = 0.0;
-	trx_avg_remaining.second = 0;
-
   mysql_mutex_init(key_LOCK_thd_data, &LOCK_thd_data, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_thd_query, &LOCK_thd_query, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_thd_sysvar, &LOCK_thd_sysvar, MY_MUTEX_INIT_FAST);
