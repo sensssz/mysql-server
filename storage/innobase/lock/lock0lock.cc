@@ -2972,7 +2972,7 @@ lock_rec_dequeue_from_page(lock_t* in_lock, bool use_fcfs)
 
 	if (!in_lock->is_waiting() &&
 			in_lock->trx->mysql_thd != nullptr &&
-			!TraceTool::GetInstance().ShouldMeasure()) {
+			TraceTool::GetInstance().ShouldMeasure()) {
 		long lock_held_time = in_lock->on_released();
 		TraceTool::GetInstance().AddRemainingTimeRecord(lock_held_time);
 	}
