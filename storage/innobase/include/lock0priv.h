@@ -257,7 +257,7 @@ struct lock_t {
 	}
 
 	double get_ldrf_priority() {
-		return trx->age / trx->mysql_thd->get_estimated_remaining_time();
+		return 0;
 	}
 
 	/** Print the lock object into the given output stream.
