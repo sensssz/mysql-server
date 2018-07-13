@@ -89,15 +89,6 @@
 using std::min;
 using std::max;
 using std::unique_ptr;
-
-static std::vector<std::string> kTrxPrefix = {
-	"SELECT C_DISCOUNT, C_LAST, C_CREDIT, W_TAX  FROM CUSTOMER, WAREHOUSE",
-	"UPDATE WAREHOUSE SET W_YTD = W_YTD",
-	"SELECT D_NEXT_O_ID FROM DISTRICT WHERE D_W_ID",
-	"SELECT C_FIRST, C_MIDDLE, C_ID, C_STREET_1, C_STREET_2, C_CITY, C_STATE, C_ZIP, C_PHONE, C_CREDIT, C_CREDIT_LIM, C_DISCOUNT",
-	"SELECT NO_O_ID FROM NEW_ORDER WHERE NO_D_ID"
-};
-
 void roll_avg(std::pair<double, long> &avg, double num) {
 	avg.second++;
 	avg.first = avg.first / avg.second * (avg.second - 1) + num / avg.second;
@@ -567,38 +558,6 @@ THD::THD(bool enable_plugins)
 #ifndef DBUG_OFF
   debug_binlog_xid_last.reset();
 #endif
-}
-
-
-void THD::on_new_query(const char *str, size_t length) {
-	std::string query(str, length);
-	if (previous_is_commit) {
-		for (auto &prefix : kTrxPrefix) {
-			if (query.find(prefix) == 0) {
-				current_trx_type = prefix;
-				break;
-			}
-			current_trx_type = "None";
-		}
-	}
-	previous_is_commit = (query == "COMMIT" || query == "commit");
-}
-
-void THD::on_lock_released(double lock_held_duration) {
-	if (remaining_times.find(current_trx_type) == remaining_times.end()) {
-		remaining_times[current_trx_type] = std::make_pair(0.0, 0);
-	}
-	auto &pair = remaining_times[current_trx_type];
-	roll_avg(pair, lock_held_duration);
-	roll_avg(trx_avg_remaining, lock_held_duration);
-}
-
-double THD::get_estimated_remaining_time() {
-	auto iter = remaining_times.find(current_trx_type);
-	if (iter != remaining_times.end()) {
-		return iter->second.first;
-	}
-	return trx_avg_remaining.first;
 }
 
 void THD::set_transaction(Transaction_ctx *transaction_ctx)

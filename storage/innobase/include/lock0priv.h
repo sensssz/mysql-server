@@ -249,11 +249,11 @@ struct lock_t {
 		granted_time = std::chrono::high_resolution_clock::now();
 	}
 
-	double on_released()
+	long on_released()
 	{
 		auto now = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(now - granted_time);
-		return static_cast<double>(duration.count());
+		return duration.count();
 	}
 
 	double get_ldrf_priority() {

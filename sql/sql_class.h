@@ -913,15 +913,7 @@ public:
   dd::cache::Dictionary_client *dd_client() const // Get the dictionary client.
   { return m_dd_client.get(); }
 
-	void on_new_query(const char *str, size_t length);
-	void on_lock_released(double lock_held_duration);
-	double get_estimated_remaining_time();
-
 private:
-	bool previous_is_commit;
-	std::string current_trx_type;
-	std::pair<double, long> trx_avg_remaining;
-	std::unordered_map<std::string, std::pair<double, long>> remaining_times;
 
   std::unique_ptr<dd::cache::Dictionary_client > m_dd_client;
 

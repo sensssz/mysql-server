@@ -1413,7 +1413,6 @@ static inline bool is_timer_applicable_to_statement(THD *thd)
           !thd->sp_runtime_ctx);
 }
 
-
 /**
   Perform one connection-level (COM_XXXX) command.
 

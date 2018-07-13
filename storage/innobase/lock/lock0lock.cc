@@ -42,6 +42,7 @@ Created 5/7/1996 Heikki Tuuri
 #include <unordered_map>
 #include <unordered_set>
 
+#include "trace_tool.h"
 #include "btr0btr.h"
 #include "current_thd.h"
 #include "dict0boot.h"
@@ -2970,8 +2971,8 @@ lock_rec_dequeue_from_page(lock_t* in_lock, bool use_fcfs)
 	auto	page_no = in_lock->rec_lock.page_no;
 
 	if (!in_lock->is_waiting() && in_lock->trx->mysql_thd != nullptr) {
-		double lock_held_time = in_lock->on_released();
-		in_lock->trx->mysql_thd->on_lock_released(lock_held_time);
+		long lock_held_time = in_lock->on_released();
+		TraceTool::GetInstance().AddRemainingTimeRecord(lock_held_time);
 	}
 
 	ut_ad(in_lock->index->table->n_rec_locks > 0);
