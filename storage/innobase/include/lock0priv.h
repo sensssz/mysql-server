@@ -134,6 +134,7 @@ struct lock_t {
 	linked list, used by the hash table. */
 	lock_t*			hash;
 
+	bool granted;
 	std::chrono::time_point<std::chrono::high_resolution_clock> granted_time;
 
 	union {
@@ -248,12 +249,14 @@ struct lock_t {
 	void on_granted()
 	{
 		if (TraceTool::GetInstance().ShouldMeasure()) {
+			granted = true;
 			granted_time = std::chrono::high_resolution_clock::now();
 		}
 	}
 
 	long on_released()
 	{
+		assert(granted);
 		auto now = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(now - granted_time);
 		return duration.count();

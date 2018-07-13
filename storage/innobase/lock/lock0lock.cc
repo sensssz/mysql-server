@@ -1413,6 +1413,8 @@ RecLock::lock_alloc(
 
 	rec_lock.page_no = rec_id.m_page_no;
 
+	lock->granted = false;
+
 	/* Set the bit corresponding to rec */
 
 	lock_rec_set_nth_bit(lock, rec_id.m_heap_no);
