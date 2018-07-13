@@ -261,7 +261,7 @@ struct lock_t {
 
 	double get_hldsf_priority() {
 		if (trx->mysql_thd->trx_type == -1) {
-			return ;
+			return 0;
 		}
 		double remaining_time = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd->trx_type)->mean;
 		return trx->age / remaining_time;
