@@ -42,6 +42,7 @@ those functions in lock/ */
 #endif
 
 #include "sql/sql_class.h"
+#include "sql/trace_tool.h"
 #include "univ.i"
 #include "dict0types.h"
 #include "hash0hash.h"
@@ -246,7 +247,9 @@ struct lock_t {
 
 	void on_granted()
 	{
-		granted_time = std::chrono::high_resolution_clock::now();
+		if (TraceTool::GetInstance().ShouldMeasure()) {
+			granted_time = std::chrono::high_resolution_clock::now();
+		}
 	}
 
 	long on_released()
@@ -256,8 +259,12 @@ struct lock_t {
 		return duration.count();
 	}
 
-	double get_ldrf_priority() {
-		return 0;
+	double get_hldsf_priority() {
+		if (trx->mysql_thd->trx_type == -1) {
+			return ;
+		}
+		double remaining_time = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd->trx_type)->mean;
+		return trx->age / remaining_time;
 	}
 
 	/** Print the lock object into the given output stream.

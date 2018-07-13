@@ -1,15 +1,24 @@
 #ifndef SQL_TRACE_TOOL_H_
 #define SQL_TRACE_TOOL_H_
 
+#include <memory>
 #include <vector>
+
+struct RemainingTimeVariable {
+	double mean;
+	double variance;
+	RemainingTimeVariable() : mean(0), variance(0) {}
+	RemainingTimeVariable(double mean_in, double variance_in) :
+		mean(mean_in), variance(variance_in) {}
+};
 
 class TraceTool {
 public:
 	static TraceTool &GetInstance();
-	bool ParseNewQuery(const char *query, size_t len);
-	int GetCurrentTrxId();
-	int GetCurrentTrxType();
+	int ParseNewQuery(const char *query, size_t len);
 	void AddRemainingTimeRecord(long remaining_time);
+	const RemainingTimeVariable *GetRemainingTimeVariable(int trx_type);
+	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
 
 private:
 	struct RemainingTimeRecord {
@@ -21,10 +30,11 @@ private:
 		RemainingTimeRecord(RemainingTimeRecord &&) = default;
 	};
 
-	TraceTool() {}
+	TraceTool();
 	~TraceTool();
 	int StringToInt(const char *str, size_t len);
 
+	std::unique_ptr<RemainingTimeVariable[]> remaining_time_variables_;
 	std::vector<RemainingTimeRecord> records_;
 };
 

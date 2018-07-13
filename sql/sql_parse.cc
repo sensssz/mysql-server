@@ -1719,7 +1719,10 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
 
     DBUG_PRINT("query",("%-.4096s", thd->query().str));
 
-		TraceTool::GetInstance().ParseNewQuery(thd->query().str, thd->query().length);
+		int trx_type = TraceTool::GetInstance().ParseNewQuery(thd->query().str, thd->query().length);
+		if (trx_type != -1) {
+			thd->trx_type = trx_type;
+		}
 
 #if defined(ENABLED_PROFILING)
     thd->profiling.set_query_source(thd->query().str, thd->query().length);

@@ -2734,7 +2734,7 @@ struct VATS_Lock_priority {
 		if (innodb_lock_schedule == INNODB_LOCK_SCHEDULE_LDSF) {
 			return lhs.first->trx->age > rhs.first->trx->age;
 		} else {
-			return(lhs.first->get_ldrf_priority() > rhs.first->get_ldrf_priority());
+			return(lhs.first->get_hldsf_priority() > rhs.first->get_hldsf_priority());
 		}
 	}
 };
@@ -2970,7 +2970,9 @@ lock_rec_dequeue_from_page(lock_t* in_lock, bool use_fcfs)
 	auto	space = in_lock->rec_lock.space;
 	auto	page_no = in_lock->rec_lock.page_no;
 
-	if (!in_lock->is_waiting() && in_lock->trx->mysql_thd != nullptr) {
+	if (!in_lock->is_waiting() &&
+			in_lock->trx->mysql_thd != nullptr &&
+			!TraceTool::GetInstance().ShouldMeasure()) {
 		long lock_held_time = in_lock->on_released();
 		TraceTool::GetInstance().AddRemainingTimeRecord(lock_held_time);
 	}

@@ -60,8 +60,8 @@ enum innodb_lock_schedule_t {
 	INNODB_LOCK_SCHEDULE_FCFS,
 	/*!< Largest Dependency Set First */
 	INNODB_LOCK_SCHEDULE_LDSF,
-	/*!< Largest Dependency Set Remaining Time Ratio First */
-	INNODB_LOCK_SCHEDULE_LDRF
+	/*!< HLDSF */
+	INNODB_LOCK_SCHEDULE_HLDSF
 };
 
 extern ulong innodb_lock_schedule;

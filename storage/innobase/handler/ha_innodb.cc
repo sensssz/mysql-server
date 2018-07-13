@@ -21917,8 +21917,8 @@ static MYSQL_SYSVAR_ENUM(lock_schedule, innodb_lock_schedule,
 	" grant the locks in First-Come-First-Served order;"
 	" LDSF"
 	" use the Largest-Dependency-Set-First algorithm;"
-	" LDRF"
-	" use the Largest-Dependency-Set-Remaining-Time-Ratio-First algorithm;",
+	" hLDSF"
+	" use the hLDSF algorithm;",
 	NULL, NULL, INNODB_LOCK_SCHEDULE_FCFS,
 	&innodb_lock_schedule_typelib);
 
