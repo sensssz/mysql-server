@@ -4,7 +4,7 @@
 
 #include <cstring>
 
-thread_local int trx_id = 0;
+thread_local int trx_id = -1;
 thread_local int trx_type = -1;
 
 TraceTool &TraceTool::GetInstance() {
@@ -51,7 +51,7 @@ bool TraceTool::ParseNewQuery(const char *query, size_t len)
 	}
 	trx_type_start++;
 	trx_id = StringToInt(query + trx_id_start, trx_type_start - trx_id_start - 1);
-	trx_type = StringToInt(query + trx_type_start, len - trx_type_start);
+	trx_type = StringToInt(query + trx_type_start, len - trx_type_start - 1);
 	return true;
 }
 
