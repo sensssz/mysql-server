@@ -359,7 +359,6 @@ THD::THD(bool enable_plugins)
    mark_used_columns(MARK_COLUMNS_READ),
    want_privilege(0),
    lex(&main_lex),
-	 previous_is_commit(false),
    m_dd_client(new dd::cache::Dictionary_client(this)),
    m_query_string(NULL_CSTR),
    m_db(NULL_CSTR),

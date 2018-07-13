@@ -155,6 +155,7 @@
 #include "sql/system_variables.h" // System_status_var
 #include "sql/table.h"
 #include "sql/table_cache.h"  // table_cache_manager
+#include "sql/trace_tool.h"
 #include "sql/transaction.h"  // trans_rollback_implicit
 #include "sql/transaction_info.h"
 #include "sql_string.h"
@@ -1718,7 +1719,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
 
     DBUG_PRINT("query",("%-.4096s", thd->query().str));
 
-		thd->on_new_query(thd->query().str, thd->query().length);
+		TraceTool::GetInstance().ParseNewQuery(thd->query().str, thd->query().length);
 
 #if defined(ENABLED_PROFILING)
     thd->profiling.set_query_source(thd->query().str, thd->query().length);
