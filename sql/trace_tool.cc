@@ -80,9 +80,9 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 	records_.push_back(RemainingTimeRecord(trx_id, trx_type, remaining_time));
 }
 
-const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(int trx_type) {
-	if (trx_type == -1) {
+const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
+	if (thd->trx_type == -1) {
 		return nullptr;
 	}
-	return remaining_time_variables_.get() + trx_type;
+	return remaining_time_variables_.get() + thd->trx_type;
 }

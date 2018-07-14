@@ -1,6 +1,8 @@
 #ifndef SQL_TRACE_TOOL_H_
 #define SQL_TRACE_TOOL_H_
 
+#include "sql_class.h"
+
 #include <memory>
 #include <vector>
 
@@ -17,7 +19,7 @@ public:
 	static TraceTool &GetInstance();
 	int ParseNewQuery(const char *query, size_t len);
 	void AddRemainingTimeRecord(long remaining_time);
-	const RemainingTimeVariable *GetRemainingTimeVariable(int trx_type);
+	const RemainingTimeVariable *GetRemainingTimeVariable(THD *thd);
 	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
 
 private:

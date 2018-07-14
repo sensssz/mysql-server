@@ -33,8 +33,7 @@ those functions in lock/ */
 #error Do not include lock0priv.h outside of the lock/ module
 #endif
 
-#include "sql/sql_class.h"
-#include "sql/trace_tool.h"
+#include <trace_tool.h>
 
 #include "univ.i"
 #include "dict0types.h"
@@ -193,11 +192,11 @@ struct lock_t {
 	}
 
 	double get_hldsf_priority() {
-		if (trx->mysql_thd->trx_type == -1) {
+		auto variable = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd);
+		if (variable == nullptr) {
 			return 0;
 		}
-		double remaining_time = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd->trx_type)->mean;
-		return trx->dep_size / remaining_time;
+		return trx->dep_size / variable->mean;
 	}
 
 	/** Print the lock object into the given output stream.
