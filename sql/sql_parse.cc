@@ -1441,7 +1441,7 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
                       (char *) thd->security_context()->host_or_ip().str);
 
     const char *packet_end= thd->query().str + thd->query().length;
-    TraceTool::get_instance()->set_query(thd->query().str);
+		TraceTool::GetInstance().ParseNewQuery(thd->query.str, thd->query().length);
 
     if (opt_general_log_raw)
       query_logger.general_log_write(thd, command, thd->query().str,
@@ -2385,8 +2385,6 @@ static inline void binlog_gtid_end_transaction(THD *thd)
     thd->lex->sql_command == SQLCOM_* clause; for temporary
     tables they match only thd->lex->sql_command == SQLCOM_*.)
   */
-
-  TraceTool::get_instance()->end_transaction();
 
   if ((thd->lex->sql_command == SQLCOM_COMMIT ||
        (thd->slave_thread &&

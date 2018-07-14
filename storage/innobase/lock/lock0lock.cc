@@ -1499,6 +1499,8 @@ RecLock::lock_alloc(
 
 	lock_rec_set_nth_bit(lock, rec_id.m_heap_no);
 
+	lock->granted = false;
+
 	MONITOR_INC(MONITOR_NUM_RECLOCK);
 
 	MONITOR_INC(MONITOR_RECLOCK_CREATED);
@@ -1812,33 +1814,9 @@ RecLock::lock_add(lock_t* lock, bool add_to_hash)
 		update_dep_size(lock, lock_rec_find_set_bit(lock), false);
 	}
 
-    int tp = -1;
-    switch(TraceTool::get_instance()->type)
-    {
-        case NEW_ORDER:
-            tp = 0;
-            break;
-        case PAYMENT:
-            tp = 1;
-            break;
-        case ORDER_STATUS:
-            tp = 2;
-            break;
-        case DELIVERY:
-            tp = 3;
-            break;
-        case STOCK_LEVEL:
-            tp = 4;
-            break;
-    }
-    if (tp >= 0)
-    {
-        TraceTool::get_instance()->num_locks_per_type[tp]++;
-    }
-
-    clock_gettime(CLOCK_REALTIME, &end);
+	clock_gettime(CLOCK_REALTIME, &end);
 	ulint duration = (end.tv_sec - start.tv_sec) * 1E9 + (end.tv_nsec - start.tv_nsec);
-    insert_time.push_back(duration);
+	insert_time.push_back(duration);
 }
 
 /**
@@ -1876,6 +1854,10 @@ RecLock::create(
 	}
 
 	lock_add(lock, add_to_hash);
+
+	if (!lock->is_waiting()) {
+		lock->on_granted();
+	}
 
 	if (!owns_trx_mutex) {
 		trx_mutex_exit(trx);
@@ -2490,6 +2472,8 @@ lock_grant(
 	lock_t*	lock)	/*!< in/out: waiting lock request */
 {
 	ut_ad(lock_mutex_own());
+
+	lock->on_granted();
 
 	lock_reset_lock_and_trx_wait(lock);
 
@@ -3141,6 +3125,12 @@ lock_rec_dequeue_from_page(
 	// if (func_start.tv_sec - last_update.tv_sec >= 60) {
 	// 	exec_time.clear();
 	// }
+	if (!in_lock->is_waiting() &&
+			in_lock->trx->mysql_thd != nullptr &&
+			TraceTool::GetInstance().ShouldMeasure()) {
+		long lock_held_time = in_lock->on_released();
+		TraceTool::GetInstance().AddRemainingTimeRecord(lock_held_time);
+	}
 
 	ut_ad(lock_mutex_own());
 	ut_ad(lock_get_type_low(in_lock) == LOCK_REC);
@@ -3262,13 +3252,6 @@ dump_log()
     std::ofstream max_c_file("latency/max_c");
     max_c_file << max_c << std::endl;
     max_c_file.close();
-
-    std::ofstream lock_per_type_file("latency/lock_per_type");
-    for (int i = 0; i < 5; ++i)
-    {
-        lock_per_type_file << TraceTool::get_instance()->num_locks_per_type[i] / (double) (TraceTool::get_instance()->num_trx_per_type[i]);
-    }
-    lock_per_type_file.close();
 }
 
 /*************************************************************//**

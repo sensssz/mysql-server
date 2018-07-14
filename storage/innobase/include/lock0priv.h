@@ -38,6 +38,8 @@ those functions in lock/ */
 #include "hash0hash.h"
 #include "trx0types.h"
 
+#include <chrono>
+
 /** A table lock */
 struct lock_table_t {
 	dict_table_t*	table;		/*!< database table in dictionary
@@ -130,6 +132,9 @@ struct lock_t {
 					LOCK_INSERT_INTENTION,
 					wait flag, ORed */
 
+	bool granted;
+	std::chrono::time_point<std::chrono::high_resolution_clock> granted_time;
+
 	/** Determine if the lock object is a record lock.
 	@return true if record lock, false otherwise. */
 	bool is_record_lock() const
@@ -164,6 +169,32 @@ struct lock_t {
 	enum lock_mode mode() const
 	{
 		return(static_cast<enum lock_mode>(type_mode & LOCK_MODE_MASK));
+	}
+
+	void on_granted()
+	{
+		if (TraceTool::GetInstance().ShouldMeasure()) {
+			granted = true;
+			granted_time = std::chrono::high_resolution_clock::now();
+		}
+	}
+
+	long on_released()
+	{
+		if (!granted) {
+			return 0;
+		}
+		auto now = std::chrono::high_resolution_clock::now();
+		auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(now - granted_time);
+		return duration.count();
+	}
+
+	double get_hldsf_priority() {
+		if (trx->mysql_thd->trx_type == -1) {
+			return 0;
+		}
+		double remaining_time = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd->trx_type)->mean;
+		return trx->age / remaining_time;
 	}
 
 	/** Print the lock object into the given output stream.
