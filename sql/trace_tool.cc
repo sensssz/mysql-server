@@ -84,5 +84,5 @@ const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(int trx_type) {
 	if (trx_type == -1) {
 		return nullptr;
 	}
-	return remaining_time_variables_.get() + trx_type - 1;
+	return remaining_time_variables_.get() + trx_type;
 }
