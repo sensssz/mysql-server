@@ -462,7 +462,7 @@ static TYPELIB innodb_default_row_format_typelib = {
 static const char* innodb_lock_schedule_names[] = {
 	"fcfs",
 	"ldsf",
-	"ldrf",
+	"hldsf",
 	NullS
 };
 
