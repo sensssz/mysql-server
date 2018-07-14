@@ -33,6 +33,9 @@ those functions in lock/ */
 #error Do not include lock0priv.h outside of the lock/ module
 #endif
 
+#include "sql/sql_class.h"
+#include "sql/trace_tool.h"
+
 #include "univ.i"
 #include "dict0types.h"
 #include "hash0hash.h"
@@ -194,7 +197,7 @@ struct lock_t {
 			return 0;
 		}
 		double remaining_time = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd->trx_type)->mean;
-		return trx->age / remaining_time;
+		return trx->dep_size / remaining_time;
 	}
 
 	/** Print the lock object into the given output stream.

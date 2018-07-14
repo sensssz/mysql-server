@@ -1084,6 +1084,7 @@ THD::THD(bool enable_plugins)
    m_transaction_psi(NULL),
    m_idle_psi(NULL),
    m_server_idle(false),
+	 trx_type(-1),
    user_var_events(key_memory_user_var_entry),
    next_to_commit(NULL),
    binlog_need_explicit_defaults_ts(false),

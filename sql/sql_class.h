@@ -2601,6 +2601,8 @@ public:
   /** True if the server code is IDLE for this connection. */
   bool m_server_idle;
 
+	int trx_type;
+
   /*
     Id of current query. Statement can be reused to execute several queries
     query_id is global in context of the whole MySQL server.

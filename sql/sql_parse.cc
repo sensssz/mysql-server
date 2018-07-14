@@ -1441,7 +1441,10 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
                       (char *) thd->security_context()->host_or_ip().str);
 
     const char *packet_end= thd->query().str + thd->query().length;
-		TraceTool::GetInstance().ParseNewQuery(thd->query().str, thd->query().length);
+		int trx_type = TraceTool::GetInstance().ParseNewQuery(thd->query().str, thd->query().length);
+		if (trx_type != -1) {
+			thd->trx_type = trx_type;
+		}
 
     if (opt_general_log_raw)
       query_logger.general_log_write(thd, command, thd->query().str,
