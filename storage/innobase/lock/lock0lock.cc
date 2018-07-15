@@ -3024,7 +3024,11 @@ ldsf_grant(
 	for (i = 1; i < actual_chunk_size; ++i) {
 		lock = read_locks[i];
 		read_dep_size_total += lock->trx->dep_size;
-		double remaining_time = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd)->mean;
+		double remaining_time = 0;
+		auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
+		if (var != nullptr) {
+			remaining_time = var->mean;
+		}
 		if (remaining_time > max_remaining_time) {
 			max_remaining_time = remaining_time;
 		}
