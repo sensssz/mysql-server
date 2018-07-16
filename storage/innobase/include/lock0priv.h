@@ -185,7 +185,7 @@ struct lock_t {
 
 	long on_released()
 	{
-		if (!granted || is_record_lock()) {
+		if (!granted || !is_record_lock()) {
 			return 0;
 		}
 		auto now = std::chrono::high_resolution_clock::now();
