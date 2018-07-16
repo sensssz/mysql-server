@@ -351,7 +351,7 @@ lock_wait_suspend_thread(
 		if (!lock->is_record_lock()) {
 			continue;
 		}
-		lock->wait_time_after_this += diff_time;
+		lock->wait_time_after_this += static_cast<long>(diff_time) * 1000;
 	}
 
 	if (thr->lock_state == QUE_THR_LOCK_ROW) {
