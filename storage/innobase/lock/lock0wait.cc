@@ -198,6 +198,7 @@ lock_wait_suspend_thread(
 	ulint		sec;
 	ulint		ms;
 	ulong		lock_wait_timeout;
+	ulint		diff_time;
 
 	trx = thr_get_trx(thr);
 
@@ -331,30 +332,29 @@ lock_wait_suspend_thread(
 
 	wait_time = ut_difftime(ut_time(), slot->suspend_time);
 
+	/* Release the slot for others to use */
+
+	lock_wait_table_release_slot(slot);
+
+	if (ut_usectime(&sec, &ms) == -1) {
+		finish_time = -1;
+	} else {
+		finish_time = static_cast<int64_t>(sec) * 1000000 + ms;
+	}
+
+	diff_time = (finish_time > start_time) ?
+							(ulint) (finish_time - start_time) : 0;
+
 	for (lock_t *lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
 			 lock != NULL;
 			 lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
 		if (!lock->is_record_lock()) {
 			continue;
 		}
-		lock->wait_time_after_this += static_cast<long>(wait_time) * 1000;
+		lock->wait_time_after_this += diff_time;
 	}
 
-	/* Release the slot for others to use */
-
-	lock_wait_table_release_slot(slot);
-
 	if (thr->lock_state == QUE_THR_LOCK_ROW) {
-		ulint	diff_time;
-
-		if (ut_usectime(&sec, &ms) == -1) {
-			finish_time = -1;
-		} else {
-			finish_time = static_cast<int64_t>(sec) * 1000000 + ms;
-		}
-
-		diff_time = (finish_time > start_time) ?
-			    (ulint) (finish_time - start_time) : 0;
 
 		srv_stats.n_lock_wait_current_count.dec();
 		srv_stats.n_lock_wait_time.add(diff_time);
