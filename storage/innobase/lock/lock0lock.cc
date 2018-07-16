@@ -1500,6 +1500,7 @@ RecLock::lock_alloc(
 	lock_rec_set_nth_bit(lock, rec_id.m_heap_no);
 
 	lock->granted = false;
+	lock->wait_time_after_this = 0;
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK);
 

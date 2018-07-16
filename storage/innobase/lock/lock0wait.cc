@@ -331,6 +331,15 @@ lock_wait_suspend_thread(
 
 	wait_time = ut_difftime(ut_time(), slot->suspend_time);
 
+	for (lock_t *lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
+			 lock != NULL;
+			 lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+		if (!lock->is_record_lock()) {
+			continue;
+		}
+		lock->wait_time_after_this += static_cast<long>(wait_time) * 1000;
+	}
+
 	/* Release the slot for others to use */
 
 	lock_wait_table_release_slot(slot);

@@ -137,6 +137,8 @@ struct lock_t {
 	bool granted;
 	std::chrono::time_point<std::chrono::high_resolution_clock> granted_time;
 
+	long wait_time_after_this;
+
 	/** Determine if the lock object is a record lock.
 	@return true if record lock, false otherwise. */
 	bool is_record_lock() const
@@ -175,7 +177,7 @@ struct lock_t {
 
 	void on_granted()
 	{
-		if (TraceTool::GetInstance().ShouldMeasure()) {
+		if (is_record_lock() && TraceTool::GetInstance().ShouldMeasure()) {
 			granted = true;
 			granted_time = std::chrono::high_resolution_clock::now();
 		}
@@ -183,15 +185,16 @@ struct lock_t {
 
 	long on_released()
 	{
-		if (!granted) {
+		if (!granted || is_record_lock()) {
 			return 0;
 		}
 		auto now = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(now - granted_time);
-		return duration.count();
+		return duration.count() - wait_time_after_this;
 	}
 
 	double get_hldsf_priority() {
+		assert(!is_record_lock());
 		auto variable = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd);
 		if (variable == nullptr) {
 			return 0;
