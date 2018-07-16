@@ -194,7 +194,7 @@ struct lock_t {
 	}
 
 	double get_hldsf_priority() {
-		assert(!is_record_lock());
+		assert(is_record_lock());
 		auto variable = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd);
 		if (variable == nullptr) {
 			return 0;
