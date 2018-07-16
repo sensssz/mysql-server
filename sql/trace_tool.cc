@@ -81,7 +81,7 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 }
 
 const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
-	if (thd->trx_type == -1) {
+	if (thd->trx_type == -1 || remaining_time_variables_.get() == nullptr) {
 		return nullptr;
 	}
 	return remaining_time_variables_.get() + thd->trx_type;
