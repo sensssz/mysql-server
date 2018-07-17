@@ -4,6 +4,15 @@
 
 #include <cstring>
 
+namespace {
+
+bool FileExists(const std::string &filename) {
+	std::ifstream infile(filename);
+	return !infile.fail();
+}
+
+}
+
 thread_local int trx_id = -1;
 thread_local int trx_type = -1;
 
@@ -30,7 +39,11 @@ TraceTool::TraceTool() {
 }
 
 TraceTool::~TraceTool() {
-	std::ofstream remaining_time_file("../remaining_time.csv");
+	int i = 1;
+	while (::FileExists("../remaining_time." + std::to_string(i) + ".csv")) {
+		i++;
+	}
+	std::ofstream remaining_time_file("../remaining_time." + std::to_string(i) + ".csv");
 	for (auto &record : records_) {
 		remaining_time_file << record.trx_id << ','
 		<< record.trx_type << ',' << record.remaining_time << std::endl;

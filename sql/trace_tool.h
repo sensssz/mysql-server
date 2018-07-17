@@ -20,7 +20,8 @@ public:
 	int ParseNewQuery(const char *query, size_t len);
 	void AddRemainingTimeRecord(long remaining_time);
 	const RemainingTimeVariable *GetRemainingTimeVariable(THD *thd);
-	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
+//	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
+	bool ShouldMeasure() { return true; }
 
 private:
 	struct RemainingTimeRecord {
