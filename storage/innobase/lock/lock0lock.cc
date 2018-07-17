@@ -3009,76 +3009,78 @@ ldsf_grant(
 			} else if (lock_get_mode(lock) == LOCK_X) {
 				write_locks.push_back(lock);
 			} else {
-                fprintf(stderr, "\n Non-rw-locks \n");
+				fprintf(stderr, "\n Non-rw-locks \n");
 				non_rw_locks.push_back(lock);
 			}
 		}
 	}
 
-	// Sort read locks and calcualte the actual chunk size.
-	// Calculate their estimated cost.
-	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
-	read_len.push_back(read_locks.size());
-//	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
-	read_dep_size_total = 0;
-	max_heuristic_val = 0;
-	batch_size = 0;
-	for (i = 0; i < read_locks.size(); ++i) {
-		lock = read_locks[i];
-		double remaining_time = 0;
-		auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
-		if (var != nullptr) {
-			remaining_time = var->mean;
-		} else {
-			remaining_time = lock->trx->dep_size;
-		}
-		read_dep_size_total += lock->trx->dep_size;
-		if (read_dep_size_total / remaining_time > max_heuristic_val) {
-			max_heuristic_val = read_dep_size_total / remaining_time;
-			batch_size = i + 1;
-		}
-	}
-	write_lock = lock_rec_find_max_dep_size(write_locks);
-	write_len.push_back(write_locks.size());
-	write_dep_size = write_lock ? get_heuristic_val(write_lock) : 0;
-
-	// 1 means selecting read chunk and -1 means selecting write lock
-	select_result = 0;
-	if (batch_size > 0
-			&& write_lock != NULL) {
-		write_lock_cost = write_dep_size;
-		read_lock_cost = read_dep_size_total;
-		if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF) {
-			read_lock_cost = max_heuristic_val;
-		}
-		select_result = (read_lock_cost > write_lock_cost) ? 1 : -1;
-//		write_lock_cost = read_dep_size_total + actual_chunk_size;
-//		read_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
-//		select_result = (read_lock_cost < write_lock_cost) ? 1 : -1;
-	} else if (write_lock != NULL) {
-		select_result = -1;
-	} else if (batch_size > 0) {
-		select_result = 1;
-	}
-
-	if (select_result == 1) {
-		for (i = 0; i < batch_size; ++i) {
+	if (read_locks.size() > 0 || write_locks.size() > 0) {
+		// Sort read locks and calcualte the actual chunk size.
+		// Calculate their estimated cost.
+		std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
+		read_len.push_back(read_locks.size());
+	//	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
+		read_dep_size_total = 0;
+		max_heuristic_val = 0;
+		batch_size = 0;
+		for (i = 0; i < read_locks.size(); ++i) {
 			lock = read_locks[i];
-			if (!lock_rec_has_to_wait_granted(lock, granted_locks)) {
-				lock_grant(lock);
-				HASH_DELETE(lock_t, hash, lock_hash,
-										rec_fold, lock);
-				lock_rec_insert_to_head(lock_hash, lock, rec_fold);
-				new_granted.push_back(lock);
+			read_dep_size_total += lock->trx->dep_size;
+			double remaining_time = 0;
+			auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
+			if (var != nullptr) {
+				remaining_time = var->mean;
+			} else {
+				remaining_time = read_dep_size_total;
+			}
+			if (read_dep_size_total / remaining_time >= max_heuristic_val) {
+				max_heuristic_val = read_dep_size_total / remaining_time;
+				batch_size = i + 1;
 			}
 		}
-	} else if (select_result == -1) {
-		if (!lock_rec_has_to_wait_granted(write_lock, granted_locks)) {
-			lock_grant(write_lock);
-			HASH_DELETE(lock_t, hash, lock_hash,
-									rec_fold, write_lock);
-			lock_rec_insert_to_head(lock_hash, write_lock, rec_fold);
-			new_granted.push_back(write_lock);
+		write_lock = lock_rec_find_max_dep_size(write_locks);
+		write_len.push_back(write_locks.size());
+		write_dep_size = write_lock ? get_heuristic_val(write_lock) : 0;
+
+		// 1 means selecting read chunk and -1 means selecting write lock
+		select_result = 0;
+		if (batch_size > 0
+				&& write_lock != NULL) {
+			write_lock_cost = write_dep_size;
+			read_lock_cost = read_dep_size_total;
+			if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF) {
+				read_lock_cost = max_heuristic_val;
+			}
+			select_result = (read_lock_cost > write_lock_cost) ? 1 : -1;
+	//		write_lock_cost = read_dep_size_total + actual_chunk_size;
+	//		read_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
+	//		select_result = (read_lock_cost < write_lock_cost) ? 1 : -1;
+		} else if (write_lock != NULL) {
+			select_result = -1;
+		} else if (batch_size > 0) {
+			select_result = 1;
+		}
+
+		if (select_result == 1) {
+			for (i = 0; i < batch_size; ++i) {
+				lock = read_locks[i];
+				if (!lock_rec_has_to_wait_granted(lock, granted_locks)) {
+					lock_grant(lock);
+					HASH_DELETE(lock_t, hash, lock_hash,
+											rec_fold, lock);
+					lock_rec_insert_to_head(lock_hash, lock, rec_fold);
+					new_granted.push_back(lock);
+				}
+			}
+		} else if (select_result == -1) {
+			if (!lock_rec_has_to_wait_granted(write_lock, granted_locks)) {
+				lock_grant(write_lock);
+				HASH_DELETE(lock_t, hash, lock_hash,
+										rec_fold, write_lock);
+				lock_rec_insert_to_head(lock_hash, write_lock, rec_fold);
+				new_granted.push_back(write_lock);
+			}
 		}
 	}
 
