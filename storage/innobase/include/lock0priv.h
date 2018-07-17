@@ -190,7 +190,8 @@ struct lock_t {
 		}
 		auto now = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(now - granted_time);
-		return duration.count() - wait_time_after_this;
+//		return duration.count() - wait_time_after_this;
+		return duration.count();
 	}
 
 	double get_hldsf_priority() {
