@@ -3035,7 +3035,7 @@ ldsf_grant(
 		read_dep_size_total += lock->trx->dep_size;
 		if (read_dep_size_total / remaining_time > max_heuristic_val) {
 			max_heuristic_val = read_dep_size_total / remaining_time;
-			batch_size = i;
+			batch_size = i + 1;
 		}
 	}
 	write_lock = lock_rec_find_max_dep_size(write_locks);

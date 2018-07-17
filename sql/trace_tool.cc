@@ -33,8 +33,8 @@ TraceTool::TraceTool() {
 	double variance;
 	for (int i = 0; i < num_trx_types; i++) {
 		remaining_time_file >> mean >> variance;
-		remaining_time_variables_.get()[i].mean = mean;
-		remaining_time_variables_.get()[i].variance = variance;
+		remaining_time_variables_.get()[i].mean = mean / 10E6;
+		remaining_time_variables_.get()[i].variance = variance / 10E12;
 	}
 }
 
