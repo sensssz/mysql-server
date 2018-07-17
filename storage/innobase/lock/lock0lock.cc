@@ -2961,12 +2961,12 @@ ldsf_grant(
 	ulint     i;
 	ulint     j;
 	int				select_result;
-	ulint			actual_chunk_size;
+	ulint			batch_size;
 	long      sub_dep_size_total;
 	long      add_dep_size_total;
 	long      dep_size_compsensate;
 	long				read_dep_size_total;
-	double			max_remaining_time;
+	double			max_heuristic_val;
 	long				write_dep_size;
 	double			read_lock_cost;
 	double			write_lock_cost;
@@ -3017,35 +3017,38 @@ ldsf_grant(
 
 	// Sort read locks and calcualte the actual chunk size.
 	// Calculate their estimated cost.
-//	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
-    read_len.push_back(read_locks.size());
+	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
+	read_len.push_back(read_locks.size());
 	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
 	read_dep_size_total = 0;
-	max_remaining_time = 1;
-	for (i = 1; i < actual_chunk_size; ++i) {
+	max_heuristic_val = 0;
+	for (i = 0; i < read_locks.size(); ++i) {
 		lock = read_locks[i];
-		read_dep_size_total += lock->trx->dep_size;
 		double remaining_time = 0;
 		auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
 		if (var != nullptr) {
 			remaining_time = var->mean;
+		} else {
+			remaining_time = lock->trx->dep_size;
 		}
-		if (remaining_time > max_remaining_time) {
-			max_remaining_time = remaining_time;
+		read_dep_size_total += lock->trx->dep_size;
+		if (read_dep_size_total / remaining_time > max_heuristic_val) {
+			max_heuristic_val = read_dep_size_total / remaining_time;
+			batch_size = i;
 		}
 	}
 	write_lock = lock_rec_find_max_dep_size(write_locks);
-    write_len.push_back(write_locks.size());
+	write_len.push_back(write_locks.size());
 	write_dep_size = write_lock ? get_heuristic_val(write_lock) : 0;
 
 	// 1 means selecting read chunk and -1 means selecting write lock
 	select_result = 0;
-	if (actual_chunk_size > 0
+	if (batch_size > 0
 			&& write_lock != NULL) {
 		write_lock_cost = write_dep_size;
 		read_lock_cost = read_dep_size_total;
 		if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF) {
-			read_lock_cost /= max_remaining_time;
+			read_lock_cost = max_heuristic_val;
 		}
 		select_result = (read_lock_cost > write_lock_cost) ? 1 : -1;
 //		write_lock_cost = read_dep_size_total + actual_chunk_size;
@@ -3053,12 +3056,12 @@ ldsf_grant(
 //		select_result = (read_lock_cost < write_lock_cost) ? 1 : -1;
 	} else if (write_lock != NULL) {
 		select_result = -1;
-	} else if (actual_chunk_size > 0) {
+	} else if (batch_size > 0) {
 		select_result = 1;
 	}
 
 	if (select_result == 1) {
-		for (i = 0; i < actual_chunk_size; ++i) {
+		for (i = 0; i < batch_size; ++i) {
 			lock = read_locks[i];
 			if (!lock_rec_has_to_wait_granted(lock, granted_locks)) {
 				lock_grant(lock);
