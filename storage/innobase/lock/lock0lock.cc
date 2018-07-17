@@ -3019,7 +3019,7 @@ ldsf_grant(
 	// Calculate their estimated cost.
 	std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
 	read_len.push_back(read_locks.size());
-	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
+//	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
 	read_dep_size_total = 0;
 	max_heuristic_val = 0;
 	for (i = 0; i < read_locks.size(); ++i) {
