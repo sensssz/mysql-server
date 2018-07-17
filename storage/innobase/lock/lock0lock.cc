@@ -3022,6 +3022,7 @@ ldsf_grant(
 //	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
 	read_dep_size_total = 0;
 	max_heuristic_val = 0;
+	batch_size = 0;
 	for (i = 0; i < read_locks.size(); ++i) {
 		lock = read_locks[i];
 		double remaining_time = 0;
