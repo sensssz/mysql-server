@@ -3031,8 +3031,10 @@ ldsf_grant(
 			auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
 			if (var != nullptr) {
 				remaining_time = var->mean;
-			} else {
+			} else if (read_dep_size_total > 0) {
 				remaining_time = read_dep_size_total;
+			} else {
+				remaining_time = 1;
 			}
 			if (read_dep_size_total / remaining_time >= max_heuristic_val) {
 				max_heuristic_val = read_dep_size_total / remaining_time;
