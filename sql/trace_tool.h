@@ -6,6 +6,8 @@
 #include <memory>
 #include <vector>
 
+bool IsLongTrx(THD *thd);
+
 struct RemainingTimeVariable {
 	double mean;
 	double variance;
@@ -21,7 +23,6 @@ public:
 	void AddRemainingTimeRecord(long remaining_time);
 	const RemainingTimeVariable *GetRemainingTimeVariable(THD *thd);
 //	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
-	bool IsLongTrx(THD *thd);
 	bool ShouldMeasure() { return true; }
 
 private:

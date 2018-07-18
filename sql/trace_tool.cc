@@ -13,6 +13,10 @@ bool FileExists(const std::string &filename) {
 
 }
 
+bool IsLongTrx(THD *thd) {
+	return thd != nullptr && thd->trx_type == 5;
+}
+
 thread_local int trx_id = -1;
 thread_local int trx_type = -1;
 
@@ -98,8 +102,4 @@ const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
 		return nullptr;
 	}
 	return remaining_time_variables_.get() + thd->trx_type;
-}
-
-bool TraceTool::IsLongTrx(THD *thd) {
-	return thd != nullptr && thd->trx_type == 5;
 }
