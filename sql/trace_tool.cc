@@ -93,15 +93,19 @@ int TraceTool::ParseNewQuery(const char *query, size_t len)
 }
 
 void TraceTool::AddRemainingTimeRecord(long remaining_time) {
-	if (trx_id == -1 || !ShouldMeasure() || remaining_time <= 0) {
+	if (!ShouldMeasure() || remaining_time <= 0) {
 		return;
 	}
 	records_.push_back(RemainingTimeRecord(trx_id, trx_type, remaining_time));
 }
 
 const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
-	if (thd->trx_type == -1 || remaining_time_variables_.get() == nullptr) {
+	if (remaining_time_variables_.get() == nullptr) {
 		return nullptr;
 	}
-	return remaining_time_variables_.get() + thd->trx_type;
+	if (thd->trx_type == -1) {
+		return remaining_time_variables_.get();
+	} else {
+		return remaining_time_variables_.get() + thd->trx_type + 1;
+	}
 }
