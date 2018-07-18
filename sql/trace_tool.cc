@@ -25,7 +25,7 @@ TraceTool &TraceTool::GetInstance() {
 	return instance;
 }
 
-TraceTool::TraceTool() {
+TraceTool::TraceTool() : average_latency_(0) {
 	std::ifstream remaining_time_file("../remaining_time_variables");
 	if (remaining_time_file.fail()) {
 		return;
@@ -39,7 +39,9 @@ TraceTool::TraceTool() {
 		remaining_time_file >> mean >> variance;
 		remaining_time_variables_.get()[i].mean = mean / 1E6;
 		remaining_time_variables_.get()[i].variance = variance / 1E12;
+		average_latency_ += mean / 1E6;
 	}
+	average_latency_ /= num_trx_types;
 }
 
 TraceTool::~TraceTool() {

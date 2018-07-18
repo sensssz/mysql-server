@@ -3034,7 +3034,7 @@ ldsf_grant(
 			} else if (read_dep_size_total > 0) {
 				remaining_time = read_dep_size_total;
 			} else {
-				remaining_time = 1;
+				remaining_time = TraceTool::GetInstance().AverageLatency();
 			}
 			if (read_dep_size_total / remaining_time >= max_heuristic_val) {
 				max_heuristic_val = read_dep_size_total / remaining_time;

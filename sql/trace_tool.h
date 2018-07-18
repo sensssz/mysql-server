@@ -22,6 +22,7 @@ public:
 	int ParseNewQuery(const char *query, size_t len);
 	void AddRemainingTimeRecord(long remaining_time);
 	const RemainingTimeVariable *GetRemainingTimeVariable(THD *thd);
+	double AverageLatency() { return average_latency_; }
 //	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
 	bool ShouldMeasure() { return true; }
 
@@ -41,6 +42,7 @@ private:
 
 	std::unique_ptr<RemainingTimeVariable[]> remaining_time_variables_;
 	std::vector<RemainingTimeRecord> records_;
+	double average_latency_;
 };
 
 #endif

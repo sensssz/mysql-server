@@ -198,7 +198,7 @@ struct lock_t {
 		assert(is_record_lock());
 		auto variable = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd);
 		if (variable == nullptr) {
-			return 1;
+			return trx->dep_size / TraceTool::GetInstance().AverageLatency();
 		}
 		return trx->dep_size / variable->mean;
 	}
