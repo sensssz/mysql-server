@@ -3041,6 +3041,7 @@ ldsf_grant(
 				batch_size = i + 1;
 			}
 		}
+		ut_a(read_locks.size() == 0 || batch_size > 0);
 		write_lock = lock_rec_find_max_dep_size(write_locks);
 		write_len.push_back(write_locks.size());
 		write_dep_size = write_lock ? get_heuristic_val(write_lock) : 0;
