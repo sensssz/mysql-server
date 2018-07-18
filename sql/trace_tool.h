@@ -21,6 +21,7 @@ public:
 	void AddRemainingTimeRecord(long remaining_time);
 	const RemainingTimeVariable *GetRemainingTimeVariable(THD *thd);
 //	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
+	bool IsLongTrx(THD *thd);
 	bool ShouldMeasure() { return true; }
 
 private:

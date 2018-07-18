@@ -99,3 +99,7 @@ const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
 	}
 	return remaining_time_variables_.get() + thd->trx_type;
 }
+
+bool TraceTool::IsLongTrx(THD *thd) {
+	return thd != nullptr && thd->trx_type == 5;
+}
