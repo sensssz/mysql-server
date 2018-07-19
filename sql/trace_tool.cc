@@ -93,6 +93,7 @@ int TraceTool::ParseNewQuery(const char *query, size_t len)
 		trx_type_start++;
 	}
 	trx_type_start++;
+	trx_wait_time = 0;
 	trx_id = StringToInt(query + trx_id_start, trx_type_start - trx_id_start - 1);
 	trx_type = StringToInt(query + trx_type_start, len - trx_type_start - 1);
 	return trx_type;
