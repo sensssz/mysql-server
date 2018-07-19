@@ -35,6 +35,8 @@ Created 25/5/2010 Sunny Bains
 #include "srv0start.h"
 #include "lock0priv.h"
 
+#include <trace_tool.h>
+
 /*********************************************************************//**
 Print the contents of the lock_sys_t::waiting_threads array. */
 static
@@ -345,14 +347,15 @@ lock_wait_suspend_thread(
 	diff_time = (finish_time > start_time) ?
 							(ulint) (finish_time - start_time) : 0;
 
-	for (lock_t *lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
-			 lock != NULL;
-			 lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
-		if (!lock->is_record_lock()) {
-			continue;
-		}
-		lock->wait_time_after_this += static_cast<long>(diff_time) * 1000;
-	}
+//	for (lock_t *lock = UT_LIST_GET_FIRST(trx->lock.trx_locks);
+//			 lock != NULL;
+//			 lock = UT_LIST_GET_NEXT(trx_locks, lock)) {
+//		if (!lock->is_record_lock()) {
+//			continue;
+//		}
+//		lock->wait_time_after_this += static_cast<long>(diff_time) * 1000;
+//	}
+	TraceTool::GetInstance().AddWaitRecord(diff_time);
 
 	if (thr->lock_state == QUE_THR_LOCK_ROW) {
 

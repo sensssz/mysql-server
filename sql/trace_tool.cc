@@ -50,9 +50,14 @@ TraceTool::~TraceTool() {
 		i++;
 	}
 	std::ofstream remaining_time_file("../remaining_time." + std::to_string(i) + ".csv");
-	for (auto &record : records_) {
-		remaining_time_file << record.trx_id << ','
-		<< record.trx_type << ',' << record.remaining_time << std::endl;
+	for (auto &record : remaining_time_records_) {
+		remaining_time_file << record.trx_id << ',' << record.trx_type
+												<< ',' << record.time << std::endl;
+	}
+	std::ofstream wait_time_file("../wait_time." + std::to_string(i) + ".csv");
+	for (auto &record : wait_time_records_) {
+		wait_time_file << record.trx_id << ',' << record.trx_type
+									 << ',' << record.time << std::endl;
 	}
 }
 
@@ -96,7 +101,14 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 	if (!ShouldMeasure() || remaining_time <= 0) {
 		return;
 	}
-	records_.push_back(RemainingTimeRecord(trx_id, trx_type, remaining_time));
+	remaining_time_records_.push_back(TimeRecord(trx_id, trx_type, remaining_time));
+}
+
+void TraceTool::AddWaitRecord(long wait_time) {
+	if (!ShouldMeasure() || wait_time <= 0) {
+		return;
+	}
+	wait_time_records_.push_back(TimeRecord(trx_id, trx_type, wait_time));
 }
 
 const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
