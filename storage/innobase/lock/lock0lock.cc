@@ -5182,6 +5182,8 @@ lock_release(
 	ut_ad(!trx_mutex_own(trx));
 	ut_ad(!trx->is_dd_trx);
 
+	TraceTool::GetInstance().SubmitWaitTime();
+
 	for (lock = UT_LIST_GET_LAST(trx->lock.trx_locks);
 	     lock != NULL;
 	     lock = UT_LIST_GET_LAST(trx->lock.trx_locks)) {

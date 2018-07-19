@@ -21,7 +21,8 @@ public:
 	static TraceTool &GetInstance();
 	int ParseNewQuery(const char *query, size_t len);
 	void AddRemainingTimeRecord(long remaining_time);
-	void AddWaitRecord(long wait_time);
+	void AddWaitTime(long wait_time);
+	void SubmitWaitTime();
 	const RemainingTimeVariable *GetRemainingTimeVariable(THD *thd);
 	double AverageLatency() { return average_latency_; }
 //	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }

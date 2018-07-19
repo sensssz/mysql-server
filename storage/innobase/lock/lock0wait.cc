@@ -356,9 +356,7 @@ lock_wait_suspend_thread(
 //		lock->wait_time_after_this += static_cast<long>(diff_time) * 1000;
 //	}
 
-	lock_mutex_enter();
-	TraceTool::GetInstance().AddWaitRecord(diff_time);
-	lock_mutex_exit();
+	TraceTool::GetInstance().AddWaitTime(diff_time);
 
 	if (thr->lock_state == QUE_THR_LOCK_ROW) {
 

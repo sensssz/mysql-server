@@ -19,6 +19,7 @@ bool IsLongTrx(THD *thd) {
 
 thread_local int trx_id = -1;
 thread_local int trx_type = -1;
+thread_local long trx_wait_time = 0;
 
 TraceTool &TraceTool::GetInstance() {
 	static TraceTool instance;
@@ -104,11 +105,15 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 	remaining_time_records_.push_back(TimeRecord(trx_id, trx_type, remaining_time));
 }
 
-void TraceTool::AddWaitRecord(long wait_time) {
-	if (!ShouldMeasure() || wait_time <= 0) {
+void TraceTool::AddWaitTime(long wait_time) {
+	trx_wait_time += wait_time;
+}
+
+void TraceTool::SubmitWaitTime() {
+	if (!ShouldMeasure()) {
 		return;
 	}
-	wait_time_records_.push_back(TimeRecord(trx_id, trx_type, wait_time));
+	wait_time_records_.push_back(TimeRecord(trx_id, trx_type, trx_wait_time));
 }
 
 const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
