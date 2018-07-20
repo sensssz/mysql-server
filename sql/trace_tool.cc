@@ -123,7 +123,7 @@ void TraceTool::SubmitWaitTime() {
 }
 
 void TraceTool::AddDepSizeRecord(THD *thd, long dep_size) {
-	if (true || !ShouldMeasure()) {
+	if (!ShouldMeasure()) {
 		return;
 	}
 	int trx_type = (thd == nullptr) ? -1 : thd->trx_type;
