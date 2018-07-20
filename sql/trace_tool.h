@@ -23,6 +23,7 @@ public:
 	void AddRemainingTimeRecord(long remaining_time);
 	void AddWaitTime(long wait_time);
 	void SubmitWaitTime();
+	void AddDepSizeRecord(THD *thd, long dep_size);
 	const RemainingTimeVariable *GetRemainingTimeVariable(THD *thd);
 	double AverageLatency() { return average_latency_; }
 //	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
@@ -45,6 +46,7 @@ private:
 	std::unique_ptr<RemainingTimeVariable[]> remaining_time_variables_;
 	std::vector<TimeRecord> remaining_time_records_;
 	std::vector<TimeRecord> wait_time_records_;
+	std::vector<TimeRecord> dep_size_records_;
 	double average_latency_;
 };
 

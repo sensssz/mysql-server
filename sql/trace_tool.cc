@@ -60,6 +60,11 @@ TraceTool::~TraceTool() {
 		wait_time_file << record.trx_id << ',' << record.trx_type
 									 << ',' << record.time << std::endl;
 	}
+	std::ofstream dep_size_file("../dep_size." + std::to_string(i) + ".csv");
+	for (auto &record : dep_size_records_) {
+		dep_size_file << record.trx_id << ',' << record.trx_type
+									<< ',' << record.time << std::endl;
+	}
 }
 
 int TraceTool::StringToInt(const char *str, size_t len) {
@@ -115,6 +120,14 @@ void TraceTool::SubmitWaitTime() {
 		return;
 	}
 	wait_time_records_.push_back(TimeRecord(trx_id, trx_type, trx_wait_time));
+}
+
+void TraceTool::AddDepSizeRecord(THD *thd, long dep_size) {
+	if (!ShouldMeasure()) {
+		return;
+	}
+	int trx_type = (thd == nullptr) ? -1 : thd->trx_type;
+	dep_size_records.push_back(TimeRecord(-1, trx_type, dep_size));
 }
 
 const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
