@@ -2999,9 +2999,6 @@ ldsf_grant(
 	for (lock = lock_rec_get_first(lock_hash, space, page_no, heap_no);
 			 lock != NULL;
 			 lock = lock_rec_get_next(heap_no, lock)) {
-		if (IsLongTrx(lock->trx->mysql_thd)) {
-			TraceTool::GetInstance().AddDepSizeRecord(lock->trx->mysql_thd, lock->trx->dep_size);
-		}
 		if (!lock_get_wait(lock)) {
 			granted_locks.push_back(lock);
 		} else {
