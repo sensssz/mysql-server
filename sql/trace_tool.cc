@@ -127,7 +127,7 @@ void TraceTool::AddDepSizeRecord(THD *thd, long dep_size) {
 		return;
 	}
 	int trx_type = (thd == nullptr) ? -1 : thd->trx_type;
-	dep_size_records.push_back(TimeRecord(-1, trx_type, dep_size));
+	dep_size_records_.push_back(TimeRecord(-1, trx_type, dep_size));
 }
 
 const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
