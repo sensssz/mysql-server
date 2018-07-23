@@ -51,21 +51,21 @@ TraceTool::~TraceTool() {
 		i++;
 	}
 	if (remaining_time_records_.size() > 20) {
-		std::ofstream remaining_time_file("../remaining_time." + std::to_string(i) + ".csv");
+		std::ofstream remaining_time_file("../stats/remaining_time." + std::to_string(i) + ".csv");
 		for (auto &record : remaining_time_records_) {
 			remaining_time_file << record.trx_id << ',' << record.trx_type
 													<< ',' << record.time << std::endl;
 		}
 	}
 	if (wait_time_records_.size() > 20) {
-		std::ofstream wait_time_file("../wait_time." + std::to_string(i) + ".csv");
+		std::ofstream wait_time_file("../stats/wait_time." + std::to_string(i) + ".csv");
 		for (auto &record : wait_time_records_) {
 			wait_time_file << record.trx_id << ',' << record.trx_type
 										 << ',' << record.time << std::endl;
 		}
 	}
 	if (dep_size_records_.size() > 20) {
-		std::ofstream dep_size_file("../dep_size_time." + std::to_string(i) + ".csv");
+		std::ofstream dep_size_file("../stats/dep_size_time." + std::to_string(i) + ".csv");
 		for (auto &record : dep_size_records_) {
 			dep_size_file << record.trx_id << ',' << record.trx_type
 										<< ',' << record.time << std::endl;
