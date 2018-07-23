@@ -3042,6 +3042,9 @@ ldsf_grant(
 				batch_size = i + 1;
 			}
 		}
+		if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF) {
+			batch_size = read_locks.size();
+		}
 		ut_a(innodb_lock_schedule_algorithm != INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF ||
 				 read_locks.size() == 0 || batch_size > 0);
 		write_lock = lock_rec_find_max_dep_size(write_locks);
