@@ -3002,6 +3002,7 @@ ldsf_grant(
 		if (!lock_get_wait(lock)) {
 			granted_locks.push_back(lock);
 		} else {
+			TraceTool::GetInstance().AddDepSizeRecord(lock->trx->mysql_thd, lock->trx->dep_size);
 			lock->trx->seq = i++;
 			wait_locks.push_back(lock);
 			if (lock_get_mode(lock) == LOCK_S) {
@@ -3244,6 +3245,10 @@ lock_rec_dequeue_from_page(
 																								page_no);
 				 lock != NULL;
 				 lock = lock_rec_get_next_on_page(lock)) {
+
+			if (lock_get_wait(lock)) {
+				TraceTool::GetInstance().AddDepSizeRecord(lock->trx->mysql_thd, lock->trx->dep_size);
+			}
 
 			if (lock_get_wait(lock)
 					&& !lock_rec_has_to_wait_in_queue(lock)) {
