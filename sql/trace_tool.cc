@@ -50,21 +50,21 @@ TraceTool::~TraceTool() {
 	while (::FileExists("../remaining_time." + std::to_string(i) + ".csv")) {
 		i++;
 	}
-	if (remaining_time_records_.size() > 0) {
+	if (remaining_time_records_.size() > 20) {
 		std::ofstream remaining_time_file("../remaining_time." + std::to_string(i) + ".csv");
 		for (auto &record : remaining_time_records_) {
 			remaining_time_file << record.trx_id << ',' << record.trx_type
 													<< ',' << record.time << std::endl;
 		}
 	}
-	if (wait_time_records_.size() > 0) {
+	if (wait_time_records_.size() > 20) {
 		std::ofstream wait_time_file("../wait_time." + std::to_string(i) + ".csv");
 		for (auto &record : wait_time_records_) {
 			wait_time_file << record.trx_id << ',' << record.trx_type
 										 << ',' << record.time << std::endl;
 		}
 	}
-	if (dep_size_records_.size() > 0) {
+	if (dep_size_records_.size() > 20) {
 		std::ofstream dep_size_file("../dep_size_time." + std::to_string(i) + ".csv");
 		for (auto &record : dep_size_records_) {
 			dep_size_file << record.trx_id << ',' << record.trx_type
