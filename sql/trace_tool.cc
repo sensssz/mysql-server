@@ -65,7 +65,7 @@ TraceTool::~TraceTool() {
 		}
 	}
 	if (dep_size_records_.size() > 0) {
-		std::ofstream dep_size_file("../dep_size." + std::to_string(i) + ".csv");
+		std::ofstream dep_size_file("../dep_size_time." + std::to_string(i) + ".csv");
 		for (auto &record : dep_size_records_) {
 			dep_size_file << record.trx_id << ',' << record.trx_type
 										<< ',' << record.time << std::endl;
