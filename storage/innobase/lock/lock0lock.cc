@@ -48,12 +48,14 @@ Created 5/7/1996 Heikki Tuuri
 #include "row0sel.h"
 #include "row0mysql.h"
 #include "pars0pars.h"
+#include <trace_tool.h>
 
 #include <algorithm>
 #include <set>
 #include <vector>
 #include <deque>
-#include <trace_tool.h>
+
+#include <cmath>
 
 /* Flag to enable/disable deadlock detector. */
 my_bool	innobase_deadlock_detect = TRUE;
@@ -1531,22 +1533,10 @@ use_vats(
 
 static
 bool
-use_ldsf(
-	trx_t *trx)
-{
-	return (innodb_lock_schedule_algorithm ==
-				 INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF ||
-					innodb_lock_schedule_algorithm ==
-				 INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF)
-			&& !thd_is_replication_slave_thread(trx->mysql_thd);
-}
-
-static
-bool
 use_strict_ldsf()
 {
 	return innodb_lock_schedule_algorithm ==
-				INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF;
+			 	INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF;
 }
 
 static
@@ -1555,6 +1545,34 @@ use_hldsf()
 {
 	return innodb_lock_schedule_algorithm ==
 				INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF;
+}
+
+static
+bool
+use_pfhldsf()
+{
+	return innodb_lock_schedule_algorithm ==
+				INNODB_LOCK_SCHEDULE_ALGORITHM_PFHLDSF;
+}
+
+static
+bool
+use_mfhldsf()
+{
+	return innodb_lock_schedule_algorithm ==
+				INNODB_LOCK_SCHEDULE_ALGORITHM_MFHLDSF;
+}
+
+static
+bool
+use_ldsf(
+	trx_t *trx)
+{
+	return (use_strict_ldsf() ||
+					use_hldsf() ||
+					use_pfhldsf() ||
+					use_mfhldsf()) &&
+					!thd_is_replication_slave_thread(trx->mysql_thd);
 }
 
 /*********************************************************************//**
@@ -1598,8 +1616,12 @@ has_higher_priority(
 			return lock1->trx->start_time_micro < lock2->trx->start_time_micro;
 		}
 		return lock1->trx->dep_size > lock2->trx->dep_size;
-	} else {
+	} else if (use_hldsf()) {
 		return lock1->get_hldsf_priority() > lock2->get_hldsf_priority();
+	} else if (use_pfhldsf()) {
+		return lock1->get_fhldsf_plus_priority() > lock2->get_fhldsf_plus_priority();
+	} else {
+		return lock1->get_fhldsf_multiply_priority() > lock2->get_fhldsf_multiply_priority();
 	}
 }
 
@@ -2911,33 +2933,54 @@ get_heuristic_val(
 {
 	if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF) {
 		return lock->trx->dep_size;
-	} else {
+	} else if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF) {
 		return lock->get_hldsf_priority();
+	} else if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_PFHLDSF) {
+		
 	}
 }
 
 static
+double
+calc_score(
+	ulint		dep_size_total,
+	double	max_mean,
+	double	variance_total
+	ulint		size) {
+	if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF) {
+		return dep_size_total;
+	} else if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF) {
+		return dep_size_total / max_mean;
+	} else if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_PFHLDSF ||
+						 innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_MFHLDSF) {
+		double delay_function = max_mean + sqrt((size - 1) * variance_total / size);
+	}
+	return 0;
+}
+
+static
 lock_t *
-lock_rec_find_max_dep_size(
-	std::vector<lock_t *> &locks)
+lock_rec_find_max_score_lock(
+	const std::vector<lock_t *> &locks,
+	double &priority)
 {
-	ulint		i;
-	lock_t *max_dep_lock;
+	lock_t *max_score_lock;
 	lock_t *lock;
 
+	priority = 0;
 	if (locks.size() == 0) {
-		return NULL;
+		return nullptr;
 	}
 
-	max_dep_lock = locks[0];
-	for (i = 1; i < locks.size(); ++i) {
+	max_score_lock = locks[0];
+	for (ulint i = 1; i < locks.size(); ++i) {
 		lock = locks[i];
 		if (get_heuristic_val(lock) > get_heuristic_val(max_dep_lock)) {
-			max_dep_lock = lock;
+			max_score_lock = lock;
 		}
 	}
 
-	return max_dep_lock;
+	return max_score_lock;
 }
 
 static
@@ -2946,6 +2989,36 @@ ldsf_finish_time(
 	int chunk_size)
 {
 	return 1 * log2(chunk_size + 1);
+}
+
+static
+ulint
+get_batch_size(
+	const std::vector<lock_t *> &locks,
+	ulint	&priority)
+{
+	priority = 0;
+	ulint batch_size = 0;
+	ulint dep_size_total = 0;
+	double max_mean = 0;
+	double variance_total = 0;
+	double max_score = -1;
+	for (ulint i = 0; i < locks.size(); i++) {
+		lock_t *lock = locks[i];
+		dep_size_total += lock->trx->dep_size;
+		auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
+		if (var->mean > max_mean) {
+			max_mean = var->mean;
+		}
+		variance_total += var->variance;
+		double score = calc_score(dep_size_total, max_mean, variance_total, i + 1);
+		if (score > max_score) {
+			max_score = score;
+			batch_size = i + 1;
+		}
+	}
+	priority = max_score;
+	return batch_size;
 }
 
 static
@@ -2965,11 +3038,8 @@ ldsf_grant(
 	long      sub_dep_size_total;
 	long      add_dep_size_total;
 	long      dep_size_compsensate;
-	long				read_dep_size_total;
-	double			max_heuristic_val;
-	long				write_dep_size;
-	double			read_lock_cost;
-	double			write_lock_cost;
+	double		read_priority;
+	double		write_priority;
 	lock_t*		lock;
 	lock_t*		wait_lock;
 	lock_t*		write_lock;
@@ -3022,45 +3092,17 @@ ldsf_grant(
 		std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
 		read_len.push_back(read_locks.size());
 	//	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
-		read_dep_size_total = 0;
-		max_heuristic_val = 0;
-		batch_size = 0;
-		for (i = 0; i < read_locks.size(); ++i) {
-			lock = read_locks[i];
-			read_dep_size_total += lock->trx->dep_size;
-			double remaining_time = 0;
-			auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
-			if (var != nullptr) {
-				remaining_time = var->mean;
-			} else if (read_dep_size_total > 0) {
-				remaining_time = read_dep_size_total;
-			} else {
-				remaining_time = TraceTool::GetInstance().AverageLatency();
-			}
-			if (batch_size == 0 && read_dep_size_total / remaining_time >= max_heuristic_val) {
-				max_heuristic_val = read_dep_size_total / remaining_time;
-				batch_size = i + 1;
-			}
-		}
-		if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF) {
-			batch_size = read_locks.size();
-		}
+		batch_size = get_batch_size(locks, read_priority);
 		ut_a(innodb_lock_schedule_algorithm != INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF ||
 				 read_locks.size() == 0 || batch_size > 0);
-		write_lock = lock_rec_find_max_dep_size(write_locks);
+		write_lock = lock_rec_find_max_score_lock(write_locks, write_priority);
 		write_len.push_back(write_locks.size());
-		write_dep_size = write_lock ? get_heuristic_val(write_lock) : 0;
 
 		// 1 means selecting read chunk and -1 means selecting write lock
 		select_result = 0;
 		if (batch_size > 0
 				&& write_lock != NULL) {
-			write_lock_cost = write_dep_size;
-			read_lock_cost = read_dep_size_total;
-			if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF) {
-				read_lock_cost = max_heuristic_val;
-			}
-			select_result = (read_lock_cost > write_lock_cost) ? 1 : -1;
+			select_result = (read_priority > write_priority) ? 1 : -1;
 	//		write_lock_cost = read_dep_size_total + actual_chunk_size;
 	//		read_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
 	//		select_result = (read_lock_cost < write_lock_cost) ? 1 : -1;
