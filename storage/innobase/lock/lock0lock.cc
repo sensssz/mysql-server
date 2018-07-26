@@ -2945,7 +2945,7 @@ double
 calc_score(
 	ulint		dep_size_total,
 	double	max_mean,
-	double	variance_total
+	double	variance_total,
 	ulint		size) {
 	if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF) {
 		return dep_size_total;
@@ -2954,6 +2954,7 @@ calc_score(
 	} else if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_PFHLDSF ||
 						 innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_MFHLDSF) {
 		double delay_function = max_mean + sqrt((size - 1) * variance_total / size);
+		return dep_size_total / delay_function;
 	}
 	return 0;
 }
@@ -2975,7 +2976,7 @@ lock_rec_find_max_score_lock(
 	max_score_lock = locks[0];
 	for (ulint i = 1; i < locks.size(); ++i) {
 		lock = locks[i];
-		if (get_heuristic_val(lock) > get_heuristic_val(max_dep_lock)) {
+		if (get_heuristic_val(lock) > get_heuristic_val(max_score_lock)) {
 			max_score_lock = lock;
 		}
 	}
@@ -3092,7 +3093,7 @@ ldsf_grant(
 		std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
 		read_len.push_back(read_locks.size());
 	//	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
-		batch_size = get_batch_size(locks, read_priority);
+		batch_size = get_batch_size(read_locks, read_priority);
 		ut_a(innodb_lock_schedule_algorithm != INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF ||
 				 read_locks.size() == 0 || batch_size > 0);
 		write_lock = lock_rec_find_max_score_lock(write_locks, write_priority);
