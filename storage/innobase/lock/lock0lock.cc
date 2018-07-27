@@ -2936,9 +2936,9 @@ get_heuristic_val(
 	} else if (use_hldsf()) {
 		return lock->get_hldsf_priority();
 	} else if (use_pfhldsf()) {
-		return lock->get_fhldsf_plus_priority();
+		return lock->get_hldsf_priority;
 	} else {
-		return lock->get_fhldsf_multiply_priority();
+		return lock->get_hldsf_priority();
 	}
 }
 
@@ -2974,10 +2974,14 @@ lock_rec_find_max_score_lock(
 	}
 
 	max_score_lock = locks[0];
+	priority = get_heuristic_val(max_score_lock);
 	for (ulint i = 1; i < locks.size(); ++i) {
 		lock = locks[i];
-		if (get_heuristic_val(lock) > get_heuristic_val(max_score_lock)) {
+
+		double val = get_heuristic_val(lock);
+		if (val > priority) {
 			max_score_lock = lock;
+			priority = val;
 		}
 	}
 
