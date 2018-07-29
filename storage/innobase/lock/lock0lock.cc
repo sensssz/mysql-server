@@ -2936,7 +2936,7 @@ get_heuristic_val(
 	} else if (use_hldsf()) {
 		return lock->get_hldsf_priority();
 	} else if (use_pfhldsf()) {
-		return lock->get_hldsf_priority();
+		return lock->get_hldsf_priority;
 	} else {
 		return lock->get_hldsf_priority();
 	}
