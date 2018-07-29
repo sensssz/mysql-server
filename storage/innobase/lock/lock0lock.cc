@@ -2931,14 +2931,11 @@ double
 get_heuristic_val(
 	lock_t *lock)
 {
-	if (use_strict_ldsf()) {
+	if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF) {
 		return lock->trx->dep_size;
-	} else if (use_hldsf()) {
+	} else if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF) {
 		return lock->get_hldsf_priority();
-	} else if (use_pfhldsf()) {
-		return lock->get_hldsf_priority;
-	} else {
-		return lock->get_hldsf_priority();
+	} else if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_PFHLDSF) {
 	}
 }
 
@@ -2949,14 +2946,16 @@ calc_score(
 	double	max_mean,
 	double	variance_total,
 	ulint		size) {
-	if (use_strict_ldsf()) {
+	if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF) {
 		return dep_size_total;
-	} else if (use_hldsf()) {
+	} else if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF) {
 		return dep_size_total / max_mean;
-	} else {
+	} else if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_PFHLDSF ||
+						 innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_MFHLDSF) {
 		double delay_function = max_mean + sqrt((size - 1) * variance_total / size);
 		return dep_size_total / delay_function;
 	}
+	return 0;
 }
 
 static
@@ -3000,7 +2999,7 @@ static
 ulint
 get_batch_size(
 	const std::vector<lock_t *> &locks,
-	double	&priority)
+	ulint	&priority)
 {
 	priority = 0;
 	ulint batch_size = 0;
