@@ -60,8 +60,6 @@ enum innodb_lock_schedule_algorithm_t {
 	/*!< Largest dependency set first */
 	INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF,
 	INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF,
-	INNODB_LOCK_SCHEDULE_ALGORITHM_PFHLDSF,
-	INNODB_LOCK_SCHEDULE_ALGORITHM_MFHLDSF,
 };
 
 extern ulong innodb_lock_schedule_algorithm;
