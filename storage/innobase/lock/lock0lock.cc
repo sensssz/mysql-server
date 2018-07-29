@@ -2918,22 +2918,27 @@ get_heuristic_val(
 
 static
 lock_t *
-lock_rec_find_max_dep_size(
-	std::vector<lock_t *> &locks)
+lock_rec_find_max_score_lock(
+	std::vector<lock_t *> &locks,
+	double &priority)
 {
 	ulint		i;
 	lock_t *max_dep_lock;
 	lock_t *lock;
 
+	priority = 0;
 	if (locks.size() == 0) {
-		return NULL;
+		return nullptr;
 	}
 
 	max_dep_lock = locks[0];
+	priority = get_heuristic_val(max_dep_lock);
 	for (i = 1; i < locks.size(); ++i) {
 		lock = locks[i];
-		if (get_heuristic_val(lock) > get_heuristic_val(max_dep_lock)) {
+		double val = get_heuristic_val(lock);
+		if (val > priority) {
 			max_dep_lock = lock;
+			priority = val;
 		}
 	}
 
@@ -2946,6 +2951,53 @@ ldsf_finish_time(
 	int chunk_size)
 {
 	return 1 * log2(chunk_size + 1);
+}
+
+static
+double
+calc_score(
+	ulint dep_size_total,
+	double variacne_total,
+	double max_mean,
+	ulint n) {
+	if (use_strict_ldsf()) {
+		return static_cast<double>(dep_size_total);
+	} else if (use_hldsf()) {
+		return dep_size_total / max_mean;
+	}
+	return 0;
+}
+
+static
+ulint
+get_batch_size(
+	const std::vector<lock_t *> &locks,
+	double &priority)
+{
+	priority = 0;
+	ulint batch_size = 0;
+	ulint dep_size_total = 0;
+	double variance_total = 0;
+	double max_mean = 0;
+	double max_score = -1;
+	for (ulint i = 0; i < locks.size(); i++) {
+		dep_size_total += lock->trx->dep_size;
+		auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
+		if (var->mean > max_mean) {
+			max_mean = var->mean;
+		}
+		variance_total += var->variance;
+		double score = calc_score(dep_size_total, variance_total, max_mean, i + 1);
+		if (score > max_score) {
+			max_score = score;
+			batch_size = i + 1;
+		}
+	}
+
+	priority = max_score;
+	assert(!use_strict_ldsf() || batch_size == locks.size());
+
+	return batch_size;
 }
 
 static
@@ -3022,44 +3074,16 @@ ldsf_grant(
 		std::sort(read_locks.begin(), read_locks.end(), has_higher_priority);
 		read_len.push_back(read_locks.size());
 	//	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
-		read_dep_size_total = 0;
-		max_heuristic_val = 0;
-		batch_size = 0;
-		for (i = 0; i < read_locks.size(); ++i) {
-			lock = read_locks[i];
-			read_dep_size_total += lock->trx->dep_size;
-			double remaining_time = 0;
-			auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
-			if (var != nullptr) {
-				remaining_time = var->mean;
-			} else if (read_dep_size_total > 0) {
-				remaining_time = read_dep_size_total;
-			} else {
-				remaining_time = TraceTool::GetInstance().AverageLatency();
-			}
-			if (batch_size == 0 && read_dep_size_total / remaining_time >= max_heuristic_val) {
-				max_heuristic_val = read_dep_size_total / remaining_time;
-				batch_size = i + 1;
-			}
-		}
-		if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_LDSF) {
-			batch_size = read_locks.size();
-		}
+		batch_size = get_batch_size(read_locks, read_lock_cost);
 		ut_a(innodb_lock_schedule_algorithm != INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF ||
 				 read_locks.size() == 0 || batch_size > 0);
-		write_lock = lock_rec_find_max_dep_size(write_locks);
+		write_lock = lock_rec_find_max_score_lock(write_locks, write_lock_cost);
 		write_len.push_back(write_locks.size());
-		write_dep_size = write_lock ? get_heuristic_val(write_lock) : 0;
 
 		// 1 means selecting read chunk and -1 means selecting write lock
 		select_result = 0;
 		if (batch_size > 0
 				&& write_lock != NULL) {
-			write_lock_cost = write_dep_size;
-			read_lock_cost = read_dep_size_total;
-			if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF) {
-				read_lock_cost = max_heuristic_val;
-			}
 			select_result = (read_lock_cost > write_lock_cost) ? 1 : -1;
 	//		write_lock_cost = read_dep_size_total + actual_chunk_size;
 	//		read_lock_cost = (write_dep_size + 1) * ldsf_finish_time(actual_chunk_size);
