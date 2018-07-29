@@ -2989,7 +2989,7 @@ get_batch_size(
 		}
 		variance_total += var->variance;
 		double score = calc_score(dep_size_total, variance_total, max_mean, i + 1);
-		if (score > max_score) {
+		if (score >= max_score) {
 			max_score = score;
 			batch_size = i + 1;
 		}
