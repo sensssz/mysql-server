@@ -2981,6 +2981,7 @@ get_batch_size(
 	double max_mean = 0;
 	double max_score = -1;
 	for (ulint i = 0; i < locks.size(); i++) {
+		lock_t *lock = locks[i];
 		dep_size_total += lock->trx->dep_size;
 		auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
 		if (var->mean > max_mean) {
@@ -3017,9 +3018,6 @@ ldsf_grant(
 	long      sub_dep_size_total;
 	long      add_dep_size_total;
 	long      dep_size_compsensate;
-	long				read_dep_size_total;
-	double			max_heuristic_val;
-	long				write_dep_size;
 	double			read_lock_cost;
 	double			write_lock_cost;
 	lock_t*		lock;
