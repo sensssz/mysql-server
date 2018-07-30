@@ -3007,7 +3007,7 @@ get_batch_size(
 	ulint dep_size_total = 0;
 	double max_mean = 0;
 	double variance_total = 0;
-	double max_score = -1;
+	double max_score = 0;
 	for (ulint i = 0; i < locks.size(); i++) {
 		lock_t *lock = locks[i];
 		dep_size_total += lock->trx->dep_size;
@@ -3017,7 +3017,7 @@ get_batch_size(
 		}
 		variance_total += var->variance;
 		double score = calc_score(dep_size_total, max_mean, variance_total, i + 1);
-		if (score > max_score) {
+		if (score >= max_score) {
 			max_score = score;
 			batch_size = i + 1;
 		}
