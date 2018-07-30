@@ -202,6 +202,19 @@ struct lock_t {
 		return trx->dep_size / variable->mean;
 	}
 
+	double get_fhldsf_plus_priority() {
+		assert(is_record_lock());
+		auto var = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd);
+		return trx->dep_size / (var->mean + var->variance);
+	}
+
+	double get_fhldsf_multiply_priority() {
+		assert(is_record_lock());
+		auto var = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd);
+		return trx->dep_size / (var->mean * var->variance);
+	}
+
+
 	/** Print the lock object into the given output stream.
 	@param[in,out]	out	the output stream
 	@return the given output stream. */

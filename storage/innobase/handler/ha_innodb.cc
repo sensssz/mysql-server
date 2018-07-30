@@ -306,6 +306,8 @@ static const char* innodb_lock_schedule_algorithm_names[] = {
 	"vats",
 	"ldsf",
 	"hldsf",
+	"pfhldsf",
+	"mfhldsf",
 	NullS
 };
 
@@ -19557,7 +19559,9 @@ static MYSQL_SYSVAR_ENUM(lock_schedule_algorithm, innodb_lock_schedule_algorithm
   " uses an Eldest-Transaction-First heuristic;"
   " LDSF"
   " grant the locks in Largest-Dependency-Set-First order."
-	" HLDSF",
+	" HLDSF"
+	" PFHLDSF"
+	" MFHLDSF",
   NULL, NULL, INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS,
   &innodb_lock_schedule_algorithm_typelib);
 
