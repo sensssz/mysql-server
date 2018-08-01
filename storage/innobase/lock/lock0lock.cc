@@ -3017,12 +3017,14 @@ get_batch_size(
 		}
 		variance_total += var->variance;
 		double score = calc_score(dep_size_total, max_mean, variance_total, i + 1);
+		assert(score >= 0);
 		if (score >= max_score) {
 			max_score = score;
 			batch_size = i + 1;
 		}
 	}
 	priority = max_score;
+	assert(locks.size() == 0 || batch_size > 0);
 	return batch_size;
 }
 
@@ -3098,8 +3100,6 @@ ldsf_grant(
 		read_len.push_back(read_locks.size());
 	//	actual_chunk_size = std::min(read_locks.size(), innodb_ldsf_chunk_size);
 		batch_size = get_batch_size(read_locks, read_priority);
-		ut_a(innodb_lock_schedule_algorithm != INNODB_LOCK_SCHEDULE_ALGORITHM_HLDSF ||
-				 read_locks.size() == 0 || batch_size > 0);
 		write_lock = lock_rec_find_max_score_lock(write_locks, write_priority);
 		write_len.push_back(write_locks.size());
 
