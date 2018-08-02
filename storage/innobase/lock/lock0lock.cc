@@ -2952,7 +2952,7 @@ calc_score(
 	assert(dep_size_total >= 0);
 	assert(max_mean >= 0);
 	assert(variance_total >= 0);
-	assert(size > 1);
+	assert(size > 0);
 	if (use_strict_ldsf()) {
 		return dep_size_total;
 	} else if (use_hldsf()) {
