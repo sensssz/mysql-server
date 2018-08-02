@@ -2949,17 +2949,23 @@ calc_score(
 	double	max_mean,
 	double	variance_total,
 	ulint		size) {
-	assert(dep_size_total >= 0);
 	assert(max_mean >= 0);
 	assert(variance_total >= 0);
 	assert(size > 0);
+	double score = 0;
 	if (use_strict_ldsf()) {
-		return dep_size_total;
+		score = dep_size_total;
 	} else if (use_hldsf()) {
-		return dep_size_total / max_mean;
+		score = dep_size_total / max_mean;
 	} else {
 		double delay_function = max_mean + sqrt((size - 1) * variance_total / size);
-		return dep_size_total / delay_function;
+		score = dep_size_total / delay_function;
+	}
+	if (score < 0) {
+		std::cerr << "Dep size: " << dep_size_total << std::endl;
+		std::cerr << "Variance total: " << variance_total << std::endl;
+		std::cerr << "Size: " << size << std::endl;
+		std::cerr << "Score: " << score << std::endl;
 	}
 }
 
