@@ -2958,7 +2958,7 @@ calc_score(
 	} else if (use_hldsf()) {
 		score = dep_size_total / max_mean;
 	} else {
-		double delay_function = max_mean + sqrt((size - 1) * variance_total / size);
+		double delay_function = max_mean + sqrt((size - 1) / static_cast<double>(size) * variance_total );
 		score = dep_size_total / delay_function;
 	}
 	if (score < 0) {
