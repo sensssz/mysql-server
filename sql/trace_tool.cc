@@ -34,10 +34,11 @@ TraceTool::TraceTool() : average_latency_(0) {
 	int num_trx_types;
 	remaining_time_file >> num_trx_types;
 	remaining_time_variables_.reset(new RemainingTimeVariable[num_trx_types]);
+	int num_trx;
 	double mean;
 	double variance;
 	for (int i = 0; i < num_trx_types; i++) {
-		remaining_time_file >> mean >> variance;
+		remaining_time_file >> num_trx >> mean >> variance;
 		remaining_time_variables_.get()[i].mean = mean / 1E6;
 		remaining_time_variables_.get()[i].variance = variance / 1E12;
 		average_latency_ += mean / 1E6;
