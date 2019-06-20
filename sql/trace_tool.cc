@@ -48,7 +48,7 @@ TraceTool::TraceTool() : average_latency_(0) {
 
 TraceTool::~TraceTool() {
 	int i = 1;
-	while (::FileExists("../remaining_time." + std::to_string(i) + ".csv")) {
+	while (::FileExists("../stats/remaining_time." + std::to_string(i) + ".csv")) {
 		i++;
 	}
 	if (remaining_time_records_.size() > 20) {
