@@ -53,7 +53,8 @@ TraceTool::~TraceTool() {
 	}
 	if (remaining_time_records_.size() > 20) {
 		std::ofstream remaining_time_file("../stats/remaining_time." + std::to_string(i) + ".csv");
-		for (auto &record : remaining_time_records_) {
+		for (auto &pair : remaining_time_records_) {
+			auto &record = pair.second;
 			remaining_time_file << record.trx_id << ',' << record.trx_type
 													<< ',' << record.time << std::endl;
 		}
@@ -115,7 +116,13 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 	if (!ShouldMeasure() || remaining_time <= 0) {
 		return;
 	}
-	remaining_time_records_.push_back(TimeRecord(trx_id, trx_type, remaining_time));
+	auto it = remaining_time_records_.find(trx_id);
+	if (it == remaining_time_records_.end()) {
+	} else if (it->second.remaining_time > remaining_time) {
+		// Remaining time should be the remaining time after all locks
+		// are acquired, so it would be the smallest value.
+		it->second.remaining_time = remaining_time;
+	}
 }
 
 void TraceTool::AddWaitTime(long wait_time) {
