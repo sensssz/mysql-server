@@ -118,7 +118,7 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 	}
 	auto it = remaining_time_records_.find(trx_id);
 	if (it == remaining_time_records_.end()) {
-		remaining_time_records_[trx_id] = TimeRecord(trx_id, trx_type, remaining_time);
+		remaining_time_records_.insert({trx_id, TimeRecord(trx_id, trx_type, remaining_time)});
 	} else if (it->second.time > remaining_time) {
 		// Remaining time should be the remaining time after all locks
 		// are acquired, so it would be the smallest value.
