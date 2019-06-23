@@ -2967,6 +2967,7 @@ calc_score(
 		std::cerr << "Size: " << size << std::endl;
 		std::cerr << "Score: " << score << std::endl;
 	}
+	return score;
 }
 
 static
