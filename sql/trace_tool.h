@@ -5,7 +5,6 @@
 
 #include <memory>
 #include <vector>
-#include <unordered_map>
 
 bool IsLongTrx(THD *thd);
 
@@ -45,7 +44,7 @@ private:
 	int StringToInt(const char *str, size_t len);
 
 	std::unique_ptr<RemainingTimeVariable[]> remaining_time_variables_;
-	std::unordered_map<int, TimeRecord> remaining_time_records_;
+	std::vector<TimeRecord> remaining_time_records_;
 	std::vector<TimeRecord> wait_time_records_;
 	std::vector<TimeRecord> dep_size_records_;
 	double average_latency_;
