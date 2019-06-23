@@ -26,8 +26,8 @@ public:
 	void AddDepSizeRecord(THD *thd, long dep_size);
 	const RemainingTimeVariable *GetRemainingTimeVariable(THD *thd);
 	double AverageLatency() { return average_latency_; }
-//	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
-	bool ShouldMeasure() { return true; }
+	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
+//	bool ShouldMeasure() { return true; }
 
 private:
 	struct TimeRecord {
