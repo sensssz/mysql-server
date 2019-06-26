@@ -26,7 +26,7 @@ TraceTool &TraceTool::GetInstance() {
 	return instance;
 }
 
-TraceTool::TraceTool() : average_latency_(0) {
+TraceTool::TraceTool() : total_remaining_time_(0), total_num_remainings_(0), average_latency_(0) {
 	std::ifstream remaining_time_file("../remaining_time_variables");
 	if (remaining_time_file.fail()) {
 		return;
@@ -115,7 +115,11 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 	if (!ShouldMeasure() || remaining_time <= 0) {
 		return;
 	}
-	remaining_time_records_.push_back(TimeRecord(trx_id, trx_type, remaining_time));
+	total_remaining_times_[trx_type] += remaining_time;
+	num_remainings_[trx_type]++;
+	total_remaining_time_ += remaining_time;
+	total_num_remainings_++;
+//	remaining_time_records_.push_back(TimeRecord(trx_id, trx_type, remaining_time));
 }
 
 void TraceTool::AddWaitTime(long wait_time) {
@@ -145,5 +149,18 @@ const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
 		return remaining_time_variables_.get();
 	} else {
 		return remaining_time_variables_.get() + thd->trx_type + 1;
+	}
+}
+
+double TraceTool::GetRemainingTime(THD *thd) {
+	if (thd->trx_type == -1) {
+		if (total_num_remainings_ == 0) {
+			return 0;
+		}
+		return total_remaining_time_ / total_num_remainings_;
+	} else if (num_remainings_[thd->trx_type] == 0) {
+		return 0;
+	} else {
+		return total_remaining_times_[thd->trx_type] / num_remainings_[thd->trx_type];
 	}
 }

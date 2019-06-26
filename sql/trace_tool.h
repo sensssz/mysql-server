@@ -4,6 +4,7 @@
 #include "sql_class.h"
 
 #include <memory>
+#include <map>
 #include <vector>
 
 bool IsLongTrx(THD *thd);
@@ -26,8 +27,9 @@ public:
 	void AddDepSizeRecord(THD *thd, long dep_size);
 	const RemainingTimeVariable *GetRemainingTimeVariable(THD *thd);
 	double AverageLatency() { return average_latency_; }
-	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
-//	bool ShouldMeasure() { return true; }
+	double GetRemainingTime(THD *thd);
+//	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
+	bool ShouldMeasure() { return true; }
 
 private:
 	struct TimeRecord {
@@ -47,6 +49,10 @@ private:
 	std::vector<TimeRecord> remaining_time_records_;
 	std::vector<TimeRecord> wait_time_records_;
 	std::vector<TimeRecord> dep_size_records_;
+	std::map<int, double> total_remaining_times_;
+	std::map<int, long> num_remainings_;
+	double total_remaining_time_;
+	long total_num_remainings_;
 	double average_latency_;
 };
 

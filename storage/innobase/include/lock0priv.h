@@ -195,11 +195,11 @@ struct lock_t {
 
 	double get_hldsf_priority() {
 		assert(is_record_lock());
-		auto variable = TraceTool::GetInstance().GetRemainingTimeVariable(trx->mysql_thd);
-		if (variable == nullptr) {
-			return trx->dep_size / TraceTool::GetInstance().AverageLatency();
+		auto remaining = TraceTool::GetInstance().GetRemainingTime(trx->mysql_thd);
+		if (!remaining) {
+			return trx->dep_size;
 		}
-		return trx->dep_size / variable->mean;
+		return trx->dep_size / remaining;
 	}
 
 	double get_fhldsf_plus_priority() {
