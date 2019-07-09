@@ -2944,6 +2944,14 @@ get_heuristic_val(
 
 static
 double
+ldsf_finish_time(
+  int chunk_size)
+{
+	return 1 * log2(chunk_size + 1);
+}
+
+static
+double
 calc_score(
 	ulint		dep_size_total,
 	double	max_mean,
@@ -2997,14 +3005,6 @@ lock_rec_find_max_score_lock(
 	}
 
 	return max_score_lock;
-}
-
-static
-double
-ldsf_finish_time(
-	int chunk_size)
-{
-	return 1 * log2(chunk_size + 1);
 }
 
 static
