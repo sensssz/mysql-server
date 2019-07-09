@@ -29,7 +29,7 @@ public:
 	double AverageLatency() { return average_latency_; }
 	double GetRemainingTime(THD *thd);
 //	bool ShouldMeasure() { return remaining_time_variables_.get() == nullptr; }
-	bool ShouldMeasure() { return true; }
+	bool ShouldMeasure() { return false; }
 
 private:
 	struct TimeRecord {

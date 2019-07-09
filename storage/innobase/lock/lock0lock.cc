@@ -2954,7 +2954,7 @@ calc_score(
 	assert(size > 0);
 	double score = 0;
 	if (use_strict_ldsf()) {
-		score = dep_size_total;
+		score = dep_size_total / ldsf_finish_time(size);
 	} else if (use_hldsf()) {
 		score = dep_size_total / max_mean;
 	} else {
