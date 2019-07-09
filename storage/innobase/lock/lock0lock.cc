@@ -1611,6 +1611,9 @@ has_higher_priority(
 	if (trx_is_high_priority(lock2->trx)) {
 		return false;
 	}
+	if (use_vats(lock1->trx)) {
+		return lock1->trx->start_time_micro < lock2->trx->start_time_micro;
+	}
 	if (use_strict_ldsf()) {
 		if (lock1->trx->dep_size == lock2->trx->dep_size) {
 			return lock1->trx->start_time_micro < lock2->trx->start_time_micro;
