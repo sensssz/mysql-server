@@ -32,7 +32,7 @@ TraceTool &TraceTool::GetInstance() {
 	return instance;
 }
 
-TraceTool::TraceTool() : total_remaining_time_(0), total_num_remainings_(0), average_latency_(0) {
+TraceTool::TraceTool() : average_remaining_time_(0), total_num_remainings_(0), average_latency_(0) {
 	std::ifstream remaining_time_file("../remaining_time_variables");
 	if (remaining_time_file.fail()) {
 		return;
@@ -121,8 +121,8 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 	if (!ShouldMeasure() || remaining_time <= 0) {
 		return;
 	}
-	::RollAverage(average_remaining_times_[trx_type], num_remainings_[trx_type]);
-	::RollAverage(remaining_time, total_num_remainings_, remaining_time);
+	::RollAverage(average_remaining_times_[trx_type], num_remainings_[trx_type], remaining_time);
+	::RollAverage(remaining_time, total_num_remainings_, remaining_time, remaining_time);
 //	remaining_time_records_.push_back(TimeRecord(trx_id, trx_type, remaining_time));
 }
 
