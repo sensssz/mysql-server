@@ -11,6 +11,12 @@ bool FileExists(const std::string &filename) {
 	return !infile.fail();
 }
 
+void RollAverage(double &average, long &num_values, int new_value) {
+	double num_values_new = num_values + 1;
+	average = average / num_values_new * num_values + new_value / num_values_new;
+	num_values++;
+}
+
 }
 
 bool IsLongTrx(THD *thd) {
@@ -115,10 +121,8 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 	if (!ShouldMeasure() || remaining_time <= 0) {
 		return;
 	}
-	total_remaining_times_[trx_type] += remaining_time;
-	num_remainings_[trx_type]++;
-	total_remaining_time_ += remaining_time;
-	total_num_remainings_++;
+	::RollAverage(average_remaining_times_[trx_type], num_remainings_[trx_type]);
+	::RollAverage(remaining_time, total_num_remainings_, remaining_time);
 //	remaining_time_records_.push_back(TimeRecord(trx_id, trx_type, remaining_time));
 }
 
@@ -154,13 +158,8 @@ const RemainingTimeVariable *TraceTool::GetRemainingTimeVariable(THD *thd) {
 
 double TraceTool::GetRemainingTime(THD *thd) {
 	if (thd->trx_type == -1) {
-		if (total_num_remainings_ == 0) {
-			return 0;
-		}
-		return total_remaining_time_ / total_num_remainings_;
-	} else if (num_remainings_[thd->trx_type] == 0) {
-		return 0;
+		return average_remaining_time_;
 	} else {
-		return total_remaining_times_[thd->trx_type] / num_remainings_[thd->trx_type];
+		return average_remaining_times_[thd->trx_type];
 	}
 }
