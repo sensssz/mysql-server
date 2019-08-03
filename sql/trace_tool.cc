@@ -122,7 +122,7 @@ void TraceTool::AddRemainingTimeRecord(long remaining_time) {
 		return;
 	}
 	::RollAverage(average_remaining_times_[trx_type], num_remainings_[trx_type], remaining_time);
-	::RollAverage(remaining_time, total_num_remainings_, remaining_time, remaining_time);
+	::RollAverage(average_remaining_time_, total_num_remainings_, remaining_time);
 //	remaining_time_records_.push_back(TimeRecord(trx_id, trx_type, remaining_time));
 }
 
