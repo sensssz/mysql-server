@@ -2967,7 +2967,11 @@ calc_score(
 	if (use_strict_ldsf()) {
 		score = dep_size_total / ldsf_finish_time(size);
 	} else if (use_hldsf()) {
-		score = dep_size_total / max_mean;
+		if (max_mean == 0) {
+			score = dep_size_total;
+		} else {
+			score = dep_size_total / max_mean;
+		}
 	} else {
 		double delay_function = max_mean + sqrt((size - 1) / static_cast<double>(size) * variance_total );
 		score = dep_size_total / delay_function;
