@@ -3025,11 +3025,10 @@ get_batch_size(
 	for (ulint i = 0; i < locks.size(); i++) {
 		lock_t *lock = locks[i];
 		dep_size_total += lock->trx->dep_size;
-		auto var = TraceTool::GetInstance().GetRemainingTimeVariable(lock->trx->mysql_thd);
-		if (var->mean > max_mean) {
-			max_mean = var->mean;
+		auto mean = TraceTool::GetInstance().GetRemainingTime(lock->trx->mysql_thd);
+		if (mean > max_mean) {
+			max_mean = mean;
 		}
-		variance_total += var->variance;
 		double score = calc_score(dep_size_total, max_mean, variance_total, i + 1);
 		assert(score >= 0);
 		if (score >= max_score) {
